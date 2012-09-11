@@ -42,13 +42,21 @@ while (true) {
         $logStreamer->open('write', 'tcp://'.$config['target']);
     }
     
+    // if no more data on input, we can stop
     if ($logStreamer->feof() === true) break;
     
     // @todo intercept signals to write Statistics somewhere
     
     usleep(1000);
 }
+// final write
+$logStreamer->write(true);
+// @todo : if distant host not available, 
+//         we should retry, but how many times ?
+
 if (DEBUG) var_dump($logStreamer->getStats());
+
+
 
 class logStreamer
 {
