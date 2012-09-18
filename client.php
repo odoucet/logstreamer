@@ -40,11 +40,6 @@ while (true) {
     $logStreamer->read();
     $logStreamer->write();
     
-    // test connection
-    if ($logStreamer->feofOutput() === true) {
-        $logStreamer->open('write', 'tcp://'.$config['target']);
-    }
-    
     // if no more data on input, we can stop
     if ($logStreamer->feof() === true) break;
     
@@ -53,7 +48,10 @@ while (true) {
     usleep(1000);
 }
 // final write
-$logStreamer->write(true);
+do {
+    $bytesWritten = $logStreamer->write(true);
+} while ($bytesWritten > 0);
+
 // @todo : if distant host not available, 
 //         we should retry, but how many times ?
 

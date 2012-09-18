@@ -17,6 +17,7 @@ class logStreamer
     protected $_bufferLen;
     protected $_config;
     protected $_stats;
+    protected $_distantUrl;
     
     
     public function __construct($config, $urlinput = false, $urloutput = false)
@@ -35,9 +36,13 @@ class logStreamer
             'readBytes'          => 0,
             'writtenBytes'       => 0,
         );
+        $this->_distantUrl = false;
         
         if ($urlinput !== false) $this->open('read',  $urlinput);
-        if ($urloutput !== false) $this->open('write', $urloutput);
+        if ($urloutput !== false) {
+            $this->open('write', $urloutput);
+            $this->_distantUrl = $urloutput;
+        }
         
         // @todo check config
         // check read at least 4096 bytes w/ compression (or useless)
@@ -46,6 +51,7 @@ class logStreamer
     
     /**
      * Open distant stream
+     * @return bool success or not
      */
     public function open($action, $url)
     {
@@ -70,14 +76,18 @@ class logStreamer
         if ($action == 'read') {
             $this->_input = $stream;
         } else {
-            $this->_stats['outputConnections']++;
-            $this->_stream = $stream;
+            if ($stream !== false) {
+                $this->_stats['outputConnections']++;
+                $this->_stream = $stream;
+            }
         }
+        if ($stream === false) return false;
+        return true;
     }
     
     /**
      * Read data
-     * @return bool  false if any error, true if 0 or more bytes read
+     * @return int|bool  false if any error, else bytes read
      */
     public function read()
     {        
@@ -98,18 +108,18 @@ class logStreamer
             $this->_stats['inputDataDiscarded']+= $len;
             return false;
         }
-        
+
         if ($len > 0) {
+            $this->_stats['readBytes'] += $len;
+            
             if ($this->_config['compression'] === false) {
                 $this->_bufferLen += $len;
                 $this->_buffer .= $str;
-                $this->_stats['readBytes'] += $len;
                 
             } else {
                 // More difficult ...
                 $this->_uncompressedBufferLen += $len;
                 $this->_uncompressedBuffer .= $str;
-                $this->_stats['readBytes'] += $len;
                 
                 // Try to compress data
                 if ($this->_uncompressedBufferLen > $this->_config['readSize']) {
@@ -126,14 +136,14 @@ class logStreamer
                     if ($pos > 0) {
                         // note: gzencode adds a header compatible with Gzip.
                         // overrhead is ~ 0.5% when compressing 64KB of data
-                        $compressData = gzencode(
+                        $compressData = gzdeflate(
                             substr($this->_uncompressedBuffer, 0, $pos), 
                             $this->_config['compressionLevel']
                         );
                         if ($compressData !== false) {
                             $this->_uncompressedBufferLen -= $pos;
-                            $this->_uncompressedBufferLen = substr(
-                                $this->_uncompressedBufferLen, 
+                            $this->_uncompressedBuffer = substr(
+                                $this->_uncompressedBuffer, 
                                 $pos
                             );
                             $this->_buffer .= $compressData;
@@ -144,7 +154,7 @@ class logStreamer
                 }
             }
         }
-        return true;
+        return $len;
     }
     
     public function feof()
@@ -157,17 +167,44 @@ class logStreamer
         return feof($this->_stream);
     }
     
+    /**
+     * @return false if error, else bytes written
+     */
     public function write($force = false)
     {
-        if ($this->_bufferLen === 0) return true; // nothing to write
-        var_dump($this->_bufferLen, $this->_stream);
-        if ($this->_config['binary']      === false && 
-            $this->_config['compression'] === false) {
+        if ($this->_bufferLen === 0 && $this->_uncompressedBufferLen === 0) return 0; // nothing to write
+        
+        // Reconnect if distant stream not available
+        if ($this->_stream === false) {
+            if ($this->open('write', $this->_distantUrl) === false) return false;
+        }
+
+        // if force = true, then write all buffer
+        if ($force === true) {
+            // Transform unbuffered to buffer if compressed
+            if ($this->_config['compression'] === true && 
+                $this->_uncompressedBufferLen > 0) {
+                
+                $compressData = gzencode(
+                    $this->_uncompressedBuffer, 
+                    $this->_config['compressionLevel']
+                );
+                if ($compressData !== false) {
+                    $this->_uncompressedBufferLen = 0;
+                    $this->_uncompressedBuffer    = '';
+                    $this->_buffer .= $compressData;
+                    $this->_bufferLen += strlen($compressData);
+                }
+            }
+            $pos = $this->_bufferLen;
+            
+        } elseif ($this->_config['binary']      === false && 
+                $this->_config['compression'] === false) {
             
             // We get old lines so get position of near \n
             $pos = @strpos($this->_buffer, "\n", $this->_config['writeSize']);
             
-            if ($pos === false && $force === false) {
+            if ($pos === false) {
                 // no return line. Write nothing
                 return false;
             }
@@ -175,11 +212,15 @@ class logStreamer
         } else {
             // Get X bytes
             $pos = $this->_config['writeSize'];
-            
         }
         
-        // @todo Handle compression
-        $bytesWritten = @fwrite($this->_stream, $this->_buffer, $pos);
+        $bytesWritten = false;
+        
+        if ($this->_stream !== false)
+            $bytesWritten = @fwrite($this->_stream, $this->_buffer, $pos);
+            
+        //echo "[force=".((int)$force)."] Writing ".$bytesWritten."/".$pos.
+        // " bytes (second buffer: ".$this->_uncompressedBufferLen." bytes)\n";
         
         if ($bytesWritten === false) {
             // write error
@@ -195,7 +236,7 @@ class logStreamer
             $this->_buffer = substr($this->_buffer, $bytesWritten);
         }
         
-        return true;    
+        return $bytesWritten;    
     }
     
     /** 
@@ -205,6 +246,8 @@ class logStreamer
     public function getStats()
     {
         $this->_stats['bufferSize'] = $this->_bufferLen;
+        $this->_stats['inputFeof'] = $this->feof();
+        $this->_stats['outputFeof'] = $this->feofOutput();
         return $this->_stats;
     }
 

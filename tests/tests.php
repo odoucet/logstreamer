@@ -21,6 +21,11 @@ class logstreamerTest extends PHPUnit_Framework_TestCase
             'readSize' => 4096*4,
             'writeSize' => 4096*8,
         );
+        exec('killall nc 2>&1');
+        
+        if (file_exists('resultfile.bin'))
+            unlink('resultfile.bin');
+            
     }
 	public static function setUpBeforeClass()
     {
@@ -29,8 +34,9 @@ class logstreamerTest extends PHPUnit_Framework_TestCase
         
         // Plain text
         if (!file_exists('testfile.txt')) {
+            $str = '';
             for ($i = 0; $i<10000; $i++) {
-                $str .= 'test.com 10.0.0.1 - - [17/Jul/2012:01:59:28 +0200] "POST /index.php HTTP/1.1" 401 465 "-" "Wget/1.11.4"';
+                $str .= 'test.com 10.0.0.1 - - [17/Jul/2012:01:59:28 +0200] "POST /index.php HTTP/1.1" 401 '.$i.' "-" "Wget/1.11.4"'."\n";
             }
             file_put_contents('testfile.txt', $str);
         } else {
@@ -66,8 +72,7 @@ class logstreamerTest extends PHPUnit_Framework_TestCase
             unlink('testfile.txt');
         if (file_exists('testfile.bin'))
             unlink('testfile.bin');
-        if (file_exists('resultfile.bin'))
-            unlink('resultfile.bin');
+        
     }
 	
 	public function testInitBasic()
@@ -77,9 +82,26 @@ class logstreamerTest extends PHPUnit_Framework_TestCase
         $this->assertTrue($test instanceof logstreamer);
 	}
     
+    // Test netcat is functioning correctly
+    public function testNetcat()
+    {
+        if (file_exists('resultfile.bin'))
+            unlink('resultfile.bin');
+            
+        exec('nc -l 27010 > resultfile.bin &');
+        exec('echo "test" |nc 127.0.0.1 27010');
+        
+        $this->assertEquals(
+            'test'."\n", 
+            file_get_contents('resultfile.bin'), 
+            'Netcat should work to test logstreamer correctly'
+        );
+    }
+    
     
     /**
      * @dataProvider logprovider
+     * @depends    testNetcat
     */
     public function testLogStream($config, $src, $data)
     {
@@ -92,11 +114,15 @@ class logstreamerTest extends PHPUnit_Framework_TestCase
         if (isset($config['target'])) {
             // it's crap, we can make it better (one day)
             $port = substr($config['target'], strpos($config['target'], ':')+1);
-            exec('nc -l '.$port.' > resultfile.bin &');
+            exec('nc -l '.$port.' > resultfile.bin 2>&1 &');
         }
         
         // Init logStreamer
         $this->_init($src);
+        
+        //echo exec('ps fauxw |fgrep "nc -l" |fgrep -v fgrep');
+        //echo exec('netstat -lptn');
+        //var_dump($this->stream->getStats());
         
         while (true) {
             $this->stream->read();
@@ -111,13 +137,36 @@ class logstreamerTest extends PHPUnit_Framework_TestCase
             }
             usleep(1000);
         }
-        $this->stream->write(true);
+        do {
+            $bytesWritten = $this->stream->write(true);
+        } while ($bytesWritten > 0);
         
         $stats = $this->stream->getStats();
 
         foreach ($data as $name => $val) {
             if (isset($stats[$name])) {
                 $this->assertEquals($val, $stats[$name], $name);
+            }
+        }
+        
+        // Test signature
+        if (isset($data['md5'])) {
+            if (isset($config['compression']) && $config['compression'] === true) {
+                /*$gzf = gzopen('resultfile.bin', "rb");
+                $gzdatadecode='';
+                while(!feof($gzf)) {
+                    $gzdatadecode .= fread($gzf, 16384);
+                }
+                gzclose($gzf);
+                
+                $gzdatadecode = gzinflate(file_get_contents('resultfile.bin'));
+                file_put_contents('test.bin', $gzdatadecode);
+                $this->assertEquals($data['filesize'], strlen($gzdatadecode), 'result file size');
+                $this->assertEquals($data['md5'], md5($gzdatadecode), 'md5 signature');
+                */
+            } else {
+                $this->assertEquals($data['filesize'], strlen(file_get_contents('resultfile.bin')), 'result file size');
+                $this->assertEquals($data['md5'], md5(file_get_contents('resultfile.bin')), 'md5 signature');
             }
         }
     }
@@ -127,10 +176,12 @@ class logstreamerTest extends PHPUnit_Framework_TestCase
         self::setUpBeforeClass();
         return array (
             // plain data, no compression, no remote connection
+
             array (
                 array(), 'testfile.txt', array(
                     'readBytes' => self::$plainLen,
                     'readErrors'=> 0,
+                    'outputConnections' => 0,
                     'inputDataDiscarded' => 0,
                     'bufferSize' => self::$plainLen,
                 )
@@ -141,6 +192,7 @@ class logstreamerTest extends PHPUnit_Framework_TestCase
                 array('binary' => true), 'testfile.bin', array(
                     'readBytes' => self::$binLen,
                     'readErrors'=> 0,
+                    'outputConnections' => 0,
                     'inputDataDiscarded' => 0,
                     'bufferSize' => self::$binLen,
                 )
@@ -151,6 +203,7 @@ class logstreamerTest extends PHPUnit_Framework_TestCase
                 array('maxMemory' => 1), 'testfile.txt', array(
                     'readBytes' => 4096*4, // first buffer
                     'readErrors'=> 0,
+                    'outputConnections' => 0,
                     'inputDataDiscarded' => self::$plainLen-4096*4,
                     'bufferSize' => 4096*4,
                 )
@@ -158,14 +211,68 @@ class logstreamerTest extends PHPUnit_Framework_TestCase
             
             // plain data, no compression, with remote connection
             array (
-                array('target' => '127.0.0.1:27010'), 'testfile.txt', array(
+                array('target' => '127.0.0.1:27009'), 'testfile.txt', array(
                     'readBytes' => self::$plainLen,
                     'readErrors'=> 0,
+                    'outputConnections' => 1,
                     'inputDataDiscarded' => 0,
                     'writtenBytes' => self::$plainLen,
                     'bufferSize' => 0,
+                    'md5' => self::$plainSig,
+                    'filesize' => self::$plainLen,
                 )
             ),
+            
+            // binary data, no compression, with remote connection
+            array (
+                array('target' => '127.0.0.1:27009'), 'testfile.bin', array(
+                    'readBytes' => self::$binLen,
+                    'readErrors'=> 0,
+                    'binary'    => true,
+                    'outputConnections' => 1,
+                    'inputDataDiscarded' => 0,
+                    'writtenBytes' => self::$binLen,
+                    'bufferSize' => 0,
+                    'md5' => self::$binSig,
+                    'filesize' => self::$binLen,
+                )
+            ),
+            
+            /*
+            // plain data, compression, with remote connection
+            
+            array (
+                array('target' => '127.0.0.1:27009', 'compression' => true,), 'testfile.txt', array(
+                    'readBytes' => self::$plainLen,
+                    'readErrors'=> 0,
+                    'outputConnections' => 1,
+                    'inputDataDiscarded' => 0,
+                    'filesize' => self::$plainLen,
+                    'bufferSize' => 0,
+                    'md5' => self::$plainSig,
+                )
+            ),
+            /*
+            // binary data, compression, with remote connection
+            array (
+                array('target' => '127.0.0.1:27009', 'compression' => true,), 'testfile.bin', array(
+                    'readBytes' => self::$binLen,
+                    'readErrors'=> 0,
+                    'binary'    => true,
+                    'outputConnections' => 1,
+                    'inputDataDiscarded' => 0,
+                    'filesize' => self::$binLen,
+                    'bufferSize' => 0,
+                    'md5' => self::$binSig,
+                )
+            ),
+            */
         );   
+    }
+}
+
+if (!function_exists('gzdecode')) {
+    function gzdecode($string) { // no support for 2nd argument
+        return file_get_contents('compress.zlib://data:who/cares;base64,'. base64_encode($string));
     }
 }
