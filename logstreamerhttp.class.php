@@ -20,14 +20,29 @@ class logStreamerHttp
      */
     protected $_buffer;
     
+    /**
+     * @var string write buffer
+     */
+    protected $_writeBuffer;
+    
     /** 
-     * @var Size of all buffers aggregated
+     * @var int Size of all buffers aggregated
      */
     protected $_bufferLen;
     
-    
+    /**
+     * @var array Config options
+     */
     protected $_config;
+    
+    /**
+     * @var array Stats array
+     */
     protected $_stats;
+    
+    /**
+     * @var string distant URL
+     */
     protected $_distantUrl;
     
     
@@ -50,6 +65,7 @@ class logStreamerHttp
         $this->_distantUrl = false;
         
         if ($urlinput !== false) $this->open($urlinput);
+        
         if ($urloutput !== false) {
             $this->_distantUrl = $urloutput;
         }
@@ -146,12 +162,19 @@ class logStreamerHttp
     }
     
     /**
+     * @return int bytes not written yet
+     */
+    public function dataLeft()
+    {
+        echo $this->_bufferLen. ' + '.$this->_uncompressedBufferLen.' + '.strlen($this->_writeBuffer)."\n";
+        return $this->_bufferLen + $this->_uncompressedBufferLen + strlen($this->_writeBuffer);
+    }
+    
+    /**
      * @return false if error, else bytes written
      */
     public function write($force = false)
     {
-        if ($this->_checkAnswers() === false) return 0;
-
         // if force = true, then write all buffer
         if ($force === true) {
             // Transform buffer if compressed
@@ -171,33 +194,23 @@ class logStreamerHttp
                     $this->_bufferLen += strlen($data);
                 }
             }
-            $pos = $this->_bufferLen;
         }
         
+        if ($this->_checkAnswers() === false) return 0;
         
         if ($this->_bufferLen === 0) return 0; // nothing to write
 
         // try to write 'buckets'
         $buf = array_shift($this->_buffer);
         $bytesWritten = strlen($buf);
-        
-        $opts = array(
-            'http' => array(
-                'method' => 'POST',
-                'header' => "User-Agent: logstreamerHttp ".self::VERSION."\r\n".
-                        "Content-Type: text/plain\r\n" .
-                        "X-Content-Encoding: gzip\r\n" . // forced to use X- header as this 
-                                                         // is not a standard in POST requests
-                        "Connection: Close\r\n",
-                'content' => $buf,
-            )
-        );
+
         $context = stream_context_create($opts);
 
-        
         if ($this->_stream === false) {
+            // pos == 7 to skip tcp://
+            $url = substr($this->_distantUrl, 0, strpos($this->_distantUrl, '/', 7));
             $this->_stream = stream_socket_client(
-                $this->_distantUrl, 
+                $url,
                 $errno, 
                 $errstr, 
                 0,
@@ -210,19 +223,21 @@ class logStreamerHttp
                 
                 // @todo handle writing to server with no lag
                 // @todo handle URL
-                fwrite(
-                    $this->_stream, 
-                    "POST / HTTP/1.1\r\n".
+                $uri  = parse_url($this->_distantUrl, PHP_URL_PATH);
+                $host = parse_url($this->_distantUrl, PHP_URL_HOST);
+                $this->_writeBuffer =
+                    "POST ".$uri." HTTP/1.1\r\n".
+                    "Host: ".$host."\r\n".
                     "User-Agent: logStreamerHttp v".self::VERSION."\r\n".
-                    "Content-Type: text/plain\r\n" .
+                    "Content-type: application/x-www-form-urlencoded\r\n".
                     "X-Content-Encoding: gzip\r\n" . // forced to use X- header as this 
                                                          // is not a standard in POST requests
-                    "Connection: Close\r\n\r\n"
-                );
-                fwrite(
-                    $this->_stream,
-                    $buf                
-                );
+                    "Content-length: " . strlen($buf) . "\r\n".
+                    "Connection: Close\r\n\r\n".
+                    $buf;
+                
+                $this->_bufferLen -= strlen($buf);
+                
             } else {
                 // reinsert buf into buffer (at the beginning)
                 array_unshift($this->_buffer, $buf);
@@ -232,55 +247,58 @@ class logStreamerHttp
             // and we have connection: close !
             trigger_error('Stream should not be false', E_USER_WARNING);
         }
-        
-        
-        /******
-        $bytesWritten = false;
-        
-        if ($this->_stream !== false)
-            $bytesWritten = @fwrite($this->_stream, $this->_buffer, $pos);
-            
-        //echo "[force=".((int)$force)."] Writing ".$bytesWritten."/".$pos.
-        // " bytes (second buffer: ".$this->_uncompressedBufferLen." bytes)\n";
-        
-        if ($bytesWritten === false) {
-            // write error
-            $this->_stats['writeErrors']++;
-            return false;
-        }
-        
-        if ($bytesWritten > 0) {
-            $this->_bufferLen -= $bytesWritten;
-            $this->_stats['writtenBytes'] += $bytesWritten;
-            
-            // @todo maybe next line could be optimized ?
-            $this->_buffer = substr($this->_buffer, $bytesWritten);
-        }
-        *****/
         return $bytesWritten;    
     }
     
     /**
-     * Update _stream state and get answers
+     * Update write stream state and get answers
      * @return bool false if we should not send more data.
      */
     protected function _checkAnswers()
     {
+        if ($this->_writeBuffer == '') {
+            // close
+            // @todo remove when keepalive enabled / coded :)
+            if ($this->_stream !== false) {
+                fclose($this->_stream);
+                $this->_stream = false;
+            }
+            return true;
+        }
+        
         if ($this->_stream === false)
             return true;
-        
+            
         if (feof($this->_stream)) {
             fclose($this->_stream);
+            if ($this->_writeBuffer !== '') {
+                $this->_stats['writeErrors']++;
+                $this->_writeBuffer = '';
+            }
             $this->_stream = false;
             return true;
         }
         
-        $returnCode = fread($this->_stream, 4096);
+        //write ? 
+        if ($this->_writeBuffer !== '') {
+            $writtenBytes = fwrite($this->_stream, $this->_writeBuffer, 16384);
+            $this->_writeBuffer = substr($this->_writeBuffer, $writtenBytes);
+            $this->_stats['writtenBytes'] += $writtenBytes;
+        }
         
-        if ($returnCode == '') return false; // we should get data back
-        
-        var_dump($returnCode);
-    
+        if ($this->_writeBuffer == '') {
+            $returnCode = fread($this->_stream, 4096);
+            
+            if ($returnCode == '') 
+                return false; // we should get data back
+            else {
+                // @todo check return code (must be 200)
+                // $this->_stats['writeErrors']++;   if return code error
+                var_dump($returnCode);
+                return true;
+            }
+        } else 
+            return false;
     }
     
     /** 
@@ -290,7 +308,8 @@ class logStreamerHttp
     public function getStats()
     {
         $this->_stats['bufferSize'] = $this->_bufferLen;
-        $this->_stats['inputFeof'] = $this->feof();
+        $this->_stats['inputFeof']  = $this->feof();
+        $this->_stats['buckets'] = count($this->_buffer);
         return $this->_stats;
     }
 

@@ -13,16 +13,16 @@ define('DEBUG', 1);
 
 // @todo Config file ?
 $config = array (
-    'target' => 'tcp://127.0.0.1:81', // target host
+    'target' => 'tcp://127.0.0.1:80/wiki', // target host
     'maxMemory' => 4096,    // max buffer size for both input/output 
                             // (in kilobytes)
                             // Note that memory used can be twice this size
                             // (for input and output) + internal php usage
     'binary' => false, // if plain log files on input, set to false.
                        // If binary = false, lines will be sent fully
-    'compression' => false, // will compress output with gzip
+    'compression' => false,  // will compress output with gzip
     'compressionLevel' => 4, // GZIP Level. Impact on CPU
-    'readSize' => 4096*4, // in bytes
+    'readSize' => 4096*4,    // in bytes
     'writeSize' => 4096*8,
 );
 
@@ -48,9 +48,12 @@ while (true) {
     usleep(1000);
 }
 // final write
+$i = 0;
 do {
+    echo 'Flushing data ... Remaining: '.$logStreamer->dataLeft()." bytes\n";
     $bytesWritten = $logStreamer->write(true);
-} while ($bytesWritten > 0);
+    $i++;
+} while ($logStreamer->dataLeft() > 0 && $i < 10);
 
 // @todo : if distant host not available, 
 //         we should retry, but how many times ?
