@@ -46,6 +46,11 @@ class logStreamerHttp
      */
     protected $_distantUrl;
     
+    /**
+     * @see $config['maxRetryWithoutTransfer']
+     */
+    protected $_currentMaxRetryWithoutTransfer;
+    
     
     public function __construct($config, $urlinput = false, $urloutput = false)
     {
@@ -55,8 +60,9 @@ class logStreamerHttp
         $this->_buffer = array();
         $this->_uncompressedBuffer = '';
         $this->_uncompressedBufferLen = 0;
+        $this->_currentMaxRetryWithoutTransfer = 0;
         $this->_stats = array (
-            'inputDataDiscarded' => 0, // bytes of data discarded due to memory limit
+            'dataDiscarded' => 0, // bytes of data discarded due to memory limit
             'readErrors'         => 0, // errors reading data
             'writeErrors'        => 0, // errors when writing data to distant host
             'outputConnections'  => 0, // total connections to output
@@ -75,6 +81,17 @@ class logStreamerHttp
         
         // @todo check config
         // check read at least 4096 bytes w/ compression (or useless)
+        
+        if (!isset($this->_config['maxRetryWithoutTransfer'])) {
+            $this->_config['maxRetryWithoutTransfer'] = 10;
+            /**
+            Each loop in client, we do one try to write() (+ connect if necessary).
+            Connect always returned true because it is async. That's why we do not know
+            immediately if connection succeeded. Then, we need to decide when we
+            consider the connection as "failed".
+            After 'maxRetryWithoutTransfer' pass at 0 writes, we consider a failure.
+            **/
+        }
 
     }
     
@@ -114,9 +131,10 @@ class logStreamerHttp
         
         // Add to buffer ?
         if ($this->_config['maxMemory']*1024 < ($this->_bufferLen + $this->_uncompressedBufferLen)) {
-            // Discard data
-            $this->_stats['inputDataDiscarded']+= $len;
-            return false;
+            // remove old data to add more
+            $r = array_shift($this->_buffer);
+            $this->_stats['dataDiscarded']+= strlen($r);
+            unset($r);
         }
 
         if ($len > 0) {
@@ -244,6 +262,7 @@ class logStreamerHttp
                     $buf;
                 echo 'WRITEBUF+ ';
                 $this->_bufferLen -= strlen($buf);
+                $this->_currentMaxRetryWithoutTransfer = 0;
                 
             } else {
                 // reinsert buf into buffer (at the beginning)
@@ -255,7 +274,7 @@ class logStreamerHttp
             // and we have connection: close !
             trigger_error('Stream should not be false', E_USER_WARNING);
         }
-        return $bytesWritten;    
+        return $bytesWritten;
     }
     
     /**
@@ -280,6 +299,26 @@ class logStreamerHttp
         //write ? 
         if ($this->_writeBuffer !== '') {
             $writtenBytes = fwrite($this->_stream, $this->_writeBuffer, 16384);
+            
+            if ($writtenBytes === false || $writtenBytes === 0) {
+                $this->_currentMaxRetryWithoutTransfer++;
+                
+                if ($this->_currentMaxRetryWithoutTransfer == 
+                    $this->_config['maxRetryWithoutTransfer']) {
+                    
+                    // reset packet 
+                    array_unshift(
+                        $this->_buffer, 
+                        substr($this->_writeBuffer, strpos($this->_writeBuffer, "\r\n\r\n"))
+                    );
+                    $this->_writeBuffer = '';
+                    $this->_currentMaxRetryWithoutTransfer = 0;
+                    return true;
+                }
+                return false;
+            
+            }
+            
             $this->_writeBuffer = substr($this->_writeBuffer, $writtenBytes);
             $this->_stats['writtenBytes'] += $writtenBytes;
             

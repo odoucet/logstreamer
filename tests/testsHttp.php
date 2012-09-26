@@ -196,7 +196,7 @@ class logstreamerTest extends PHPUnit_Framework_TestCase
                     'readBytes' => self::$plainLen,
                     'readErrors'=> 0,
                     //'bucketsCreated' => floor(self::$plainLen/self::$config['writeSize']),
-                    'inputDataDiscarded' => 0,
+                    'dataDiscarded' => 0,
                     'bufferSize' => self::$plainLen,
                     'uncompressedBufferSize' => 0,
                     'statsFunction' => function($stats) {
@@ -218,7 +218,7 @@ class logstreamerTest extends PHPUnit_Framework_TestCase
                     'readBytes' => self::$binLen,
                     'readErrors'=> 0,
                     'bucketsCreated' => ceil(self::$binLen / self::$config['writeSize']),
-                    'inputDataDiscarded' => 0,
+                    'dataDiscarded' => 0,
                     'bufferSize' => self::$binLen,
                 )
             ),
@@ -229,7 +229,7 @@ class logstreamerTest extends PHPUnit_Framework_TestCase
                     'readBytes' => 4096*4, // first buffer
                     'readErrors'=> 0,
                     'bucketsCreated' => ceil(self::$plainLen/self::$config['writeSize']),
-                    'inputDataDiscarded' => self::$plainLen-4096*4,
+                    'dataDiscarded' => self::$plainLen-4096*4,
                     'bufferSize' => 4096*4,
                 )
             ),
@@ -239,7 +239,7 @@ class logstreamerTest extends PHPUnit_Framework_TestCase
                 array('target' => '127.0.0.1:27009'), 'testfile.txt', array(
                     'readBytes' => self::$plainLen,
                     'readErrors'=> 0,
-                    'inputDataDiscarded' => 0,
+                    'dataDiscarded' => 0,
                     'writtenBytes' => self::$plainLen,
                     'bufferSize' => 0,
                     //'outputConnections' => 1,
@@ -255,7 +255,7 @@ class logstreamerTest extends PHPUnit_Framework_TestCase
                     'readErrors'=> 0,
                     'binary'    => true,
                     //'outputConnections' => 1,
-                    'inputDataDiscarded' => 0,
+                    'dataDiscarded' => 0,
                     'writtenBytes' => self::$binLen,
                     'bufferSize' => 0,
                     'md5' => self::$binSig,
@@ -271,7 +271,7 @@ class logstreamerTest extends PHPUnit_Framework_TestCase
                     'readBytes' => self::$plainLen,
                     'readErrors'=> 0,
                     'outputConnections' => 1,
-                    'inputDataDiscarded' => 0,
+                    'dataDiscarded' => 0,
                     'filesize' => self::$plainLen,
                     'bufferSize' => 0,
                     'md5' => self::$plainSig,
@@ -285,7 +285,7 @@ class logstreamerTest extends PHPUnit_Framework_TestCase
                     'readErrors'=> 0,
                     'binary'    => true,
                     'outputConnections' => 1,
-                    'inputDataDiscarded' => 0,
+                    'dataDiscarded' => 0,
                     'filesize' => self::$binLen,
                     'bufferSize' => 0,
                     'md5' => self::$binSig,
