@@ -1,0 +1,6 @@
+GET / HTTP/1.1
+Host: myhost.example.com
+Content-Length: 17
+Connection: close
+
+thisismycontent

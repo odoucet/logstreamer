@@ -14,6 +14,7 @@ class logStreamerHttp
     protected $_errstr;
     protected $_uncompressedBuffer;
     protected $_uncompressedBufferLen;
+    protected $_writeAnswerRequired;
     
     /**
      * @var array "buckets" to send. Already compressed
@@ -55,12 +56,14 @@ class logStreamerHttp
         $this->_uncompressedBuffer = '';
         $this->_uncompressedBufferLen = 0;
         $this->_stats = array (
-            'inputDataDiscarded' => 0,
-            'readErrors'         => 0,
-            'writeErrors'        => 0,
-            'outputConnections'  => 0,
-            'readBytes'          => 0,
-            'writtenBytes'       => 0,
+            'inputDataDiscarded' => 0, // bytes of data discarded due to memory limit
+            'readErrors'         => 0, // errors reading data
+            'writeErrors'        => 0, // errors when writing data to distant host
+            'outputConnections'  => 0, // total connections to output
+            'readBytes'          => 0, // bytes read from input
+            'writtenBytes'       => 0, // bytes written to server
+            'bucketsCreated'     => 0, // total number of buckets created
+            'serverAnsweredNo200'=> 0, // how many times distant server answered != 200
         );
         $this->_distantUrl = false;
         
@@ -110,7 +113,7 @@ class logStreamerHttp
         $len = strlen($str);
         
         // Add to buffer ?
-        if ($this->_config['maxMemory']*1024 < $this->_bufferLen) {
+        if ($this->_config['maxMemory']*1024 < ($this->_bufferLen + $this->_uncompressedBufferLen)) {
             // Discard data
             $this->_stats['inputDataDiscarded']+= $len;
             return false;
@@ -147,6 +150,7 @@ class logStreamerHttp
                     $this->_buffer[] = $tmp;
                     $this->_bufferLen += strlen($tmp);
                 }
+                $this->_stats['bucketsCreated']++;
                 
                 // clean first buffer
                 $this->_uncompressedBuffer = substr($this->_uncompressedBuffer, $pos);
@@ -166,7 +170,7 @@ class logStreamerHttp
      */
     public function dataLeft()
     {
-        echo $this->_bufferLen. ' + '.$this->_uncompressedBufferLen.' + '.strlen($this->_writeBuffer)."\n";
+        //echo $this->_bufferLen. ' + '.$this->_uncompressedBufferLen.' + '.strlen($this->_writeBuffer)."\n";
         return $this->_bufferLen + $this->_uncompressedBufferLen + strlen($this->_writeBuffer);
     }
     
@@ -196,9 +200,12 @@ class logStreamerHttp
             }
         }
         
+        // actual write to distant server
+        // return true if we can go on and prepare another HTTP request
         if ($this->_checkAnswers() === false) return 0;
         
-        if ($this->_bufferLen === 0) return 0; // nothing to write
+        // nothing to write
+        if ($this->_bufferLen === 0 || count($this->_buffer) === 0) return 0; 
 
         // try to write 'buckets'
         $buf = array_shift($this->_buffer);
@@ -209,7 +216,7 @@ class logStreamerHttp
         if ($this->_stream === false) {
             // pos == 7 to skip tcp://
             $url = substr($this->_distantUrl, 0, strpos($this->_distantUrl, '/', 7));
-            $this->_stream = stream_socket_client(
+            $this->_stream = @stream_socket_client(
                 $url,
                 $errno, 
                 $errstr, 
@@ -231,16 +238,17 @@ class logStreamerHttp
                     "User-Agent: logStreamerHttp v".self::VERSION."\r\n".
                     "Content-type: application/x-www-form-urlencoded\r\n".
                     "X-Content-Encoding: gzip\r\n" . // forced to use X- header as this 
-                                                         // is not a standard in POST requests
+                                                     // is not a standard in POST requests
                     "Content-length: " . strlen($buf) . "\r\n".
                     "Connection: Close\r\n\r\n".
                     $buf;
-                
+                echo 'WRITEBUF+ ';
                 $this->_bufferLen -= strlen($buf);
                 
             } else {
                 // reinsert buf into buffer (at the beginning)
                 array_unshift($this->_buffer, $buf);
+                return 0;
             }
         } else {
             // stream != false ? not normal behaviour here as we do not handle keepalive
@@ -256,16 +264,6 @@ class logStreamerHttp
      */
     protected function _checkAnswers()
     {
-        if ($this->_writeBuffer == '') {
-            // close
-            // @todo remove when keepalive enabled / coded :)
-            if ($this->_stream !== false) {
-                fclose($this->_stream);
-                $this->_stream = false;
-            }
-            return true;
-        }
-        
         if ($this->_stream === false)
             return true;
             
@@ -284,21 +282,32 @@ class logStreamerHttp
             $writtenBytes = fwrite($this->_stream, $this->_writeBuffer, 16384);
             $this->_writeBuffer = substr($this->_writeBuffer, $writtenBytes);
             $this->_stats['writtenBytes'] += $writtenBytes;
+            
+            if ($this->_writeBuffer == '') {
+                // we have written all data, now wait for an answer
+                $this->_writeAnswerRequired = true;
+            }
         }
         
-        if ($this->_writeBuffer == '') {
+        if ($this->_writeAnswerRequired === true) {
             $returnCode = fread($this->_stream, 4096);
             
             if ($returnCode == '') 
                 return false; // we should get data back
             else {
                 // @todo check return code (must be 200)
-                // $this->_stats['writeErrors']++;   if return code error
-                var_dump($returnCode);
-                return true;
+                if (strpos($returnCode, 'HTTP/1.1 200') !== false) {
+                    $this->_writeAnswerRequired = false;
+                    fclose($this->_stream);
+                    $this->_stream = false;
+                    return true;
+                } else {
+                    $this->_stats['serverAnsweredNo200']++;
+                }
             }
-        } else 
-            return false;
+        
+        }
+        return false;
     }
     
     /** 
@@ -307,7 +316,9 @@ class logStreamerHttp
      **/
     public function getStats()
     {
+        $this->_stats['uncompressedBufferSize'] = $this->_uncompressedBufferLen;
         $this->_stats['bufferSize'] = $this->_bufferLen;
+        $this->_stats['writeBufferSize'] = strlen($this->_writeBuffer);
         $this->_stats['inputFeof']  = $this->feof();
         $this->_stats['buckets'] = count($this->_buffer);
         return $this->_stats;

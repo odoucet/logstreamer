@@ -13,7 +13,7 @@ define('DEBUG', 1);
 
 // @todo Config file ?
 $config = array (
-    'target' => 'tcp://127.0.0.1:80/wiki', // target host
+    'target' => 'tcp://195.60.189.9:80/test.php', // target host
     'maxMemory' => 4096,    // max buffer size for both input/output 
                             // (in kilobytes)
                             // Note that memory used can be twice this size
@@ -49,13 +49,16 @@ while (true) {
 }
 // final write
 $i = 0;
+echo "Finished ! Flushing buffers ! \n";
 do {
-    echo 'Flushing data ... Remaining: '.$logStreamer->dataLeft()." bytes\n";
     $bytesWritten = $logStreamer->write(true);
-    $i++;
-} while ($logStreamer->dataLeft() > 0 && $i < 10);
+    if ($bytesWritten == 0)
+        $i++;
+    echo '.';
+    usleep(10000);
+} while ($logStreamer->dataLeft() > 0 && $i < 100);
 
 // @todo : if distant host not available, 
 //         we should retry, but how many times ?
-
+echo "\n";
 if (DEBUG) var_dump($logStreamer->getStats());
