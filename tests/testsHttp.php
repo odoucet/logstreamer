@@ -20,6 +20,7 @@ class logstreamerTest extends PHPUnit_Framework_TestCase
             'compressionLevel' => 4,
             'readSize' => 4096*4,
             'writeSize' => 4096*8,
+            'maxRetryWithoutTransfer' => 10,
         );
         
         if (file_exists('server.pid')) {
@@ -113,6 +114,8 @@ class logstreamerTest extends PHPUnit_Framework_TestCase
     */
     public function testLogStream($config, $src, $data)
     {
+        
+        
         // modify config if necessary
         foreach ($config as $name => $val) {
             self::$config[$name] = $val;
@@ -120,39 +123,40 @@ class logstreamerTest extends PHPUnit_Framework_TestCase
         
         // Launch target if necessary
         if (isset($config['target'])) {
-            shell_exec('php miniserver.php tcp://'.$config['target'].' <&- >&- 2>&- &');
+            $target = explode('/', $config['target']);
+            $args = '';
+            if (isset($config['targetProperties'])) {
+                
+                foreach ($config['targetProperties'] as $k => $v)
+                    $args .= ' '.$k.'='.$v;
+            }
+            shell_exec('php miniserver.php tcp://'.$target[2].' '.$args.' <&- >&- 2>&- &');
         }
         
         // Init logStreamer
         $this->_init($src);
-        
+        //xdebug_start_trace('trace');
         while (true) {
-            echo "R";
             $this->stream->read();
-            echo "W";
-            $st  = $this->stream->getStats();
-            echo ' buf='.$st['bufferSize'].'+'.$st['uncompressedBufferSize']."\n";
             $this->stream->write();
             if ($this->stream->feof() === true) break;
-            
             usleep(10000);
         }
         
         $i = 0;
         do {
             $bytesWritten = $this->stream->write(true);
-            if ($bytesWritten == 0)
+            if ($this->stream->bytesWrittenLast() == 0)
                 $i++;
             
             usleep(10000);
-            // file_put_contents('/tmp/null', $i.' '.$bytesWritten.' '.
-            //print_r($this->stream->getStats(), 1)."\n", FILE_APPEND);
         } while ($this->stream->dataLeft() > 0 && $i < 100);
+        $this->stream->write(true, true);
         
+        //xdebug_stop_trace();
         
         $stats = $this->stream->getStats();
         var_dump($stats);
-        
         if (isset($data['statsFunction'])) {
             $this->assertTrue($data['statsFunction']($stats), 'custom check function');
         }
@@ -165,23 +169,8 @@ class logstreamerTest extends PHPUnit_Framework_TestCase
         
         // Test signature
         if (isset($data['md5'])) {
-            if (isset($config['compression']) && $config['compression'] === true) {
-                /*$gzf = gzopen('resultfile.bin', "rb");
-                $gzdatadecode='';
-                while(!feof($gzf)) {
-                    $gzdatadecode .= fread($gzf, 16384);
-                }
-                gzclose($gzf);
-                
-                $gzdatadecode = gzinflate(file_get_contents('resultfile.bin'));
-                file_put_contents('test.bin', $gzdatadecode);
-                $this->assertEquals($data['filesize'], strlen($gzdatadecode), 'result file size');
-                $this->assertEquals($data['md5'], md5($gzdatadecode), 'md5 signature');
-                */
-            } else {
-                $this->assertEquals($data['filesize'], strlen(file_get_contents('resultfile.bin')), 'result file size');
-                $this->assertEquals($data['md5'], md5(file_get_contents('resultfile.bin')), 'md5 signature');
-            }
+            $this->assertEquals($data['filesize'], strlen(file_get_contents('resultfile.bin')), 'result file size');
+            $this->assertEquals($data['md5'], md5(file_get_contents('resultfile.bin')), 'md5 signature');
         }
     }
     
@@ -189,115 +178,257 @@ class logstreamerTest extends PHPUnit_Framework_TestCase
     {
         self::setUpBeforeClass();
         return array (
-            // plain data, no compression, no remote connection
-
+            
+            
+            // #0 plain data, no compression, no remote connection
             array (
                 array(), 'testfile.txt', array(
                     'readBytes' => self::$plainLen,
                     'readErrors'=> 0,
-                    //'bucketsCreated' => floor(self::$plainLen/self::$config['writeSize']),
                     'dataDiscarded' => 0,
-                    'bufferSize' => self::$plainLen,
                     'uncompressedBufferSize' => 0,
                     'statsFunction' => function($stats) {
-                        if ($stats['writeErrors'] != $stats['outputConnections'])
-                            return false;
-                        if ($stats['buckets'] != $stats['bucketsCreated'])
+                        if ($stats['writeErrors'] != ($stats['outputConnections']-100))
                             return false;
                         if ($stats['bucketsCreated'] ==0)
                             return false;
-                        
+                        if ($stats['writeBufferSize']+$stats['bufferSize'] != $stats['readBytes'])
+                            return false;
                         return true;
                     },
                 )
             ),
             
-            // binary data, no compression, no remote connection
+            // #1 binary data, no compression, no remote connection
             array (
                 array('binary' => true), 'testfile.bin', array(
                     'readBytes' => self::$binLen,
                     'readErrors'=> 0,
-                    'bucketsCreated' => ceil(self::$binLen / self::$config['writeSize']),
                     'dataDiscarded' => 0,
-                    'bufferSize' => self::$binLen,
+                    'uncompressedBufferSize' => 0,
+                    'statsFunction' => function($stats) {
+                        if ($stats['writeErrors'] != ($stats['outputConnections']-100))
+                            return false;
+                        if ($stats['bucketsCreated'] ==0)
+                            return false;
+                        if ($stats['writeBufferSize']+$stats['bufferSize'] != $stats['readBytes'])
+                            return false;
+                        return true;
+                    },
                 )
             ),
             
-            // plain data, no compression, no remote connection, small buffer
+            // #2 plain data, no compression, no remote connection, small buffer
             array (
                 array('maxMemory' => 1), 'testfile.txt', array(
-                    'readBytes' => 4096*4, // first buffer
+                    'readBytes' => self::$plainLen, // full buffer
                     'readErrors'=> 0,
-                    'bucketsCreated' => ceil(self::$plainLen/self::$config['writeSize']),
-                    'dataDiscarded' => self::$plainLen-4096*4,
-                    'bufferSize' => 4096*4,
+                    'uncompressedBufferSize' => 0,
+                    'statsFunction' => function($stats) {
+                        if ($stats['writeErrors'] != ($stats['outputConnections']-100))
+                            return false;
+                        if ($stats['bucketsCreated'] ==0)
+                            return false;
+                        if ($stats['writeBufferSize']+$stats['bufferSize'] != $stats['readBytes'])
+                            return false;
+                        if ($stats['dataDiscarded'] < $stats['readBytes']-4096*4*8)
+                            return false;
+                        if ($stats['dataDiscarded'] > $stats['readBytes']-4096*4)
+                            return false;
+                        return true;
+                    },
                 )
             ),
             
-            // plain data, no compression, with remote connection
+            // #3 plain data, no compression, with remote connection
             array (
-                array('target' => '127.0.0.1:27009'), 'testfile.txt', array(
+                array('target' => 'tcp://127.0.0.1:27009/3pdncwrc.php'), 'testfile.txt', array(
                     'readBytes' => self::$plainLen,
                     'readErrors'=> 0,
+                    'writeErrors'=> 0,
                     'dataDiscarded' => 0,
-                    'writtenBytes' => self::$plainLen,
+                    'buckets' => 0,
+                    'uncompressedBufferSize' => 0, 
+                    'writeBufferSize' => 0,
                     'bufferSize' => 0,
-                    //'outputConnections' => 1,
                     'md5' => self::$plainSig,
                     'filesize' => self::$plainLen,
+                    'statsFunction' => function($stats) {
+                        if ($stats['writtenBytes'] < $stats['readBytes'])
+                            return false;
+                        if ($stats['bucketsCreated'] != ($stats['outputConnections']-101))
+                            return false;
+                        return true;
+                    },
                 )
             ),
             
-            // binary data, no compression, with remote connection
+            // #4 binary data, no compression, with remote connection
             array (
-                array('target' => '127.0.0.1:27009'), 'testfile.bin', array(
+                array('target' => 'tcp://127.0.0.1:27009/4bdncwrc.php', 'binary'    => true,), 'testfile.bin', array(
                     'readBytes' => self::$binLen,
                     'readErrors'=> 0,
-                    'binary'    => true,
-                    //'outputConnections' => 1,
+                    'writeErrors'=> 0,
                     'dataDiscarded' => 0,
-                    'writtenBytes' => self::$binLen,
+                    'buckets' => 0,
+                    'uncompressedBufferSize' => 0, 
+                    'writeBufferSize' => 0,
                     'bufferSize' => 0,
                     'md5' => self::$binSig,
                     'filesize' => self::$binLen,
+                    'statsFunction' => function($stats) {
+                        if ($stats['writtenBytes'] < $stats['readBytes'])
+                            return false;
+                        if ($stats['bucketsCreated'] != ($stats['outputConnections']-101))
+                            return false;
+                        return true;
+                    },
                 )
             ),
             
-            /*
-            // plain data, compression, with remote connection
             
+            // #5 plain data, compression, with remote connection
             array (
-                array('target' => '127.0.0.1:27009', 'compression' => true,), 'testfile.txt', array(
+                array('target' => 'tcp://127.0.0.1:27009/5pdcwrc.php', 'compression' => true,), 'testfile.txt', array(
                     'readBytes' => self::$plainLen,
                     'readErrors'=> 0,
-                    'outputConnections' => 1,
+                    'writeErrors'=> 0,
                     'dataDiscarded' => 0,
+                    'buckets' => 0,
+                    'uncompressedBufferSize' => 0, 
+                    'writeBufferSize' => 0,
+                    'bufferSize' => 0,
                     'filesize' => self::$plainLen,
-                    'bufferSize' => 0,
                     'md5' => self::$plainSig,
+                    'statsFunction' => function($stats) {
+                        if ($stats['writtenBytes'] == 0)
+                            return false;
+                        if ($stats['bucketsCreated'] != ($stats['outputConnections']-101))
+                            return false;
+                        return true;
+                    },
                 )
             ),
-            /*
-            // binary data, compression, with remote connection
+            
+            
+            // #6 binary data, compression, with remote connection
             array (
-                array('target' => '127.0.0.1:27009', 'compression' => true,), 'testfile.bin', array(
+                array('target' => 'tcp://127.0.0.1:27009/6bdcwrc.php', 'compression' => true,), 'testfile.bin', array(
                     'readBytes' => self::$binLen,
-                    'readErrors'=> 0,
                     'binary'    => true,
-                    'outputConnections' => 1,
+                    'readErrors'=> 0,
+                    'writeErrors'=> 0,
                     'dataDiscarded' => 0,
-                    'filesize' => self::$binLen,
+                    'buckets' => 0,
+                    'uncompressedBufferSize' => 0, 
+                    'writeBufferSize' => 0,
                     'bufferSize' => 0,
+                    'filesize' => self::$binLen,
                     'md5' => self::$binSig,
+                    'statsFunction' => function($stats) {
+                        if ($stats['writtenBytes'] == 0)
+                            return false;
+                        if ($stats['bucketsCreated'] != ($stats['outputConnections']-101))
+                            return false;
+                        return true;
+                    },
                 )
             ),
-            */
+            
+            
+            // #7 plain data, compression, remote connection and odd config
+            array (
+                array(
+                    'target' => 'tcp://127.0.0.1:27009/7pdcrcaoc.php', 
+                    'compression' => true,
+                    'readSize' => 4096*1024,
+                    'writeSize' => 4096*1024,
+                    )
+                    , 'testfile.txt', array(
+                    'readBytes' => self::$plainLen,
+                    'readErrors'=> 0,
+                    'writeErrors'=> 0,
+                    'dataDiscarded' => 0,
+                    'buckets' => 0,
+                    'uncompressedBufferSize' => 0, 
+                    'writeBufferSize' => 0,
+                    'bufferSize' => 0,
+                    'filesize' => self::$plainLen,
+                    'md5' => self::$plainSig,
+                    'statsFunction' => function($stats) {
+                        if ($stats['writtenBytes'] == 0)
+                            return false;
+                        if ($stats['bucketsCreated'] != ($stats['outputConnections']-101))
+                            return false;
+                        return true;
+                    },
+                )
+            ),
+            
+            
+            // #8 plain data, compression, remote connection VERY SLOW
+            array (
+                array(
+                    'target' => 'tcp://127.0.0.1:27009/8pdcrcvs.php', 
+                    'targetProperties' => array(
+                            'readspeed' => 1000000, 
+                        ),
+                    )
+                    , 'testfile.txt', array(
+                    'readBytes' => self::$plainLen,
+                    'readErrors'=> 0,
+                    'writeErrors'=> 0,
+                    'dataDiscarded' => 0,
+                    'buckets' => 0,
+                    'uncompressedBufferSize' => 0, 
+                    'writeBufferSize' => 0,
+                    'bufferSize' => 0,
+                    'currentMaxRetryWithoutTransfer' => 10,
+                    'statsFunction' => function($stats) {
+                        if ($stats['writtenBytes'] == 0)
+                            return false;
+                        if ($stats['bucketsCreated'] != ($stats['outputConnections']-101))
+                            return false;
+                        if ($stats['serverAnsweredNo200'] != $stats['outputConnections']) {
+                            // in this test, server did not returned in time (everytime)
+                            return false;
+                        }
+                        return true;
+                    },
+                )
+            ),
+            
+            // #9 plain data, compression, remote connection unexpectly closed
+            array (
+                array(
+                    'target' => 'tcp://127.0.0.1:27009/9pdcrcuc.php', 
+                    'targetProperties' => array(
+                            'closeloop' => 2, //loop to close
+                        ),
+                    )
+                    , 'testfile.txt', array(
+                    'readBytes' => self::$plainLen,
+                    'readErrors'=> 0,
+                    'dataDiscarded' => 0,
+                    'uncompressedBufferSize' => 0, 
+                    'writeBufferSize' => 0,
+                    'statsFunction' => function($stats) {
+                        if ($stats['writtenBytes'] == 0)
+                            return false;
+                        
+                        // if FEOF, we insert the data back in buffer, so we create many buckets
+                        if ($stats['bucketsCreated'] <= $stats['outputConnections'])
+                            return false;
+                            
+                        if ($stats['bufferSize'] == 0)
+                            return false;
+                        return true;
+                    },
+                )
+            ),
+            
+            
+            
         );   
-    }
-}
-
-if (!function_exists('gzdecode')) {
-    function gzdecode($string) { // no support for 2nd argument
-        return file_get_contents('compress.zlib://data:who/cares;base64,'. base64_encode($string));
     }
 }

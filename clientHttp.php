@@ -13,17 +13,17 @@ define('DEBUG', 1);
 
 // @todo Config file ?
 $config = array (
-    'target' => 'tcp://195.60.189.9:80/test.php', // target host
+    'target' => 'tcp://127.0.0.1:80/test.php', // target host
     'maxMemory' => 4096,    // max buffer size for both input/output 
                             // (in kilobytes)
                             // Note that memory used can be twice this size
                             // (for input and output) + internal php usage
-    'binary' => false, // if plain log files on input, set to false.
-                       // If binary = false, lines will be sent fully
-    'compression' => false,  // will compress output with gzip
-    'compressionLevel' => 4, // GZIP Level. Impact on CPU
-    'readSize' => 4096*4,    // in bytes
-    'writeSize' => 4096*8,
+    'binary' => true,       // if plain log files on input, set to false.
+                            // If binary = false, lines will be sent fully
+    'compression' => true, // will compress output with gzip
+    'compressionLevel' => 6,// GZIP Level. Impact on CPU
+    'readSize' => 4096*4,   // in bytes
+    'writeSize' => 4096*32,
 );
 
 if (!class_exists('logStreamerHttp'))
@@ -35,6 +35,7 @@ $logStreamer = new logStreamerHttp(
     $config['target']
 );
 
+$lastPrint = time();
 while (true) {
 
     $logStreamer->read();
@@ -44,6 +45,19 @@ while (true) {
     if ($logStreamer->feof() === true) break;
     
     // @todo intercept signals to write Statistics somewhere
+    if (time() != $lastPrint) {
+        $lastPrint = time();
+        $infos = $logStreamer->getStats();
+        printf("Read: %6.1f MB Write: %6.1f MB  Discarded: %6.1f MB  BufferSize: %5.0f + %4.0f KB  Memory: %4.1f MB (peak: %4.1f MB)\r", 
+            $infos['readBytes']/1024/1024, 
+            $infos['writtenBytes']/1024/1024,
+            $infos['dataDiscarded']/1024/1024,
+            $infos['bufferSize']/1024,
+            $infos['writeBufferSize']/1024/1024,
+            memory_get_usage(true)/1024/1024, 
+            memory_get_peak_usage(true)/1024/1024
+        );
+    }
     
     usleep(1000);
 }
@@ -57,6 +71,8 @@ do {
     echo '.';
     usleep(10000);
 } while ($logStreamer->dataLeft() > 0 && $i < 100);
+// end
+$logStreamer->write(true, true);
 
 // @todo : if distant host not available, 
 //         we should retry, but how many times ?

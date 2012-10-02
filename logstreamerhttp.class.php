@@ -8,6 +8,7 @@
 class logStreamerHttp
 {
     const VERSION = '1.0 (2012-09-24)';
+    const DEBUG   = 0;
     protected $_input;
     protected $_stream;
     protected $_errno;
@@ -15,6 +16,7 @@ class logStreamerHttp
     protected $_uncompressedBuffer;
     protected $_uncompressedBufferLen;
     protected $_writeAnswerRequired;
+    protected $_bytesWrittenLast;
     
     /**
      * @var array "buckets" to send. Already compressed
@@ -133,8 +135,10 @@ class logStreamerHttp
         if ($this->_config['maxMemory']*1024 < ($this->_bufferLen + $this->_uncompressedBufferLen)) {
             // remove old data to add more
             $r = array_shift($this->_buffer);
-            $this->_stats['dataDiscarded']+= strlen($r);
-            unset($r);
+            $len2 = strlen($r);
+            $this->_bufferLen -= $len2;
+            $this->_stats['dataDiscarded']+= $len2;
+            unset($r, $len2);
         }
 
         if ($len > 0) {
@@ -188,14 +192,26 @@ class logStreamerHttp
      */
     public function dataLeft()
     {
-        //echo $this->_bufferLen. ' + '.$this->_uncompressedBufferLen.' + '.strlen($this->_writeBuffer)."\n";
-        return $this->_bufferLen + $this->_uncompressedBufferLen + strlen($this->_writeBuffer);
+        $cpt = $this->_bufferLen + $this->_uncompressedBufferLen + strlen($this->_writeBuffer);
+        
+        /* if an answer is required, we should know that we are still waiting for something
+         * this is really crappy code and I need to rewrite it, because it breaks
+         * the purpose of dataLeft.
+         * There is NO data left, just that we cannot end normally without an answer ...
+         */
+        if ($this->_writeAnswerRequired === true) 
+            $cpt++;
+            
+        return $cpt;
+        
     }
     
     /**
-     * @return false if error, else bytes written
+     * @var bool Force creation of bucket with remaining data
+     * @var bool Force flush of write buffer
+     * @return false if error, else bytes written into writeBuffer
      */
-    public function write($force = false)
+    public function write($force = false, $forceAnswer = false)
     {
         // if force = true, then write all buffer
         if ($force === true) {
@@ -220,7 +236,7 @@ class logStreamerHttp
         
         // actual write to distant server
         // return true if we can go on and prepare another HTTP request
-        if ($this->_checkAnswers() === false) return 0;
+        if ($this->_checkAnswers($forceAnswer) === false) return 0;
         
         // nothing to write
         if ($this->_bufferLen === 0 || count($this->_buffer) === 0) return 0; 
@@ -234,6 +250,7 @@ class logStreamerHttp
         if ($this->_stream === false) {
             // pos == 7 to skip tcp://
             $url = substr($this->_distantUrl, 0, strpos($this->_distantUrl, '/', 7));
+            if (self::DEBUG) echo "\nConnection to $url to send ".strlen($buf)." bytes\n";
             $this->_stream = @stream_socket_client(
                 $url,
                 $errno, 
@@ -241,6 +258,7 @@ class logStreamerHttp
                 0,
                 STREAM_CLIENT_CONNECT | STREAM_CLIENT_ASYNC_CONNECT
             );
+            $this->_currentMaxRetryWithoutTransfer = 0;
             
             if ($this->_stream !== false) {
                 $this->_stats['outputConnections']++;
@@ -254,25 +272,28 @@ class logStreamerHttp
                     "POST ".$uri." HTTP/1.1\r\n".
                     "Host: ".$host."\r\n".
                     "User-Agent: logStreamerHttp v".self::VERSION."\r\n".
-                    "Content-type: application/x-www-form-urlencoded\r\n".
-                    "X-Content-Encoding: gzip\r\n" . // forced to use X- header as this 
-                                                     // is not a standard in POST requests
-                    "Content-length: " . strlen($buf) . "\r\n".
+                    "Content-type: application/x-www-form-urlencoded\r\n";
+                    
+                if ($this->_config['compression'] === true) {
+                    // forced to use X- header as this 
+                    // is not a standard in POST requests
+                    $this->_writeBuffer .= "X-Content-Encoding: gzip\r\n";
+                }
+                
+                $this->_writeBuffer .= "Content-Length: " . strlen($buf) . "\r\n".
                     "Connection: Close\r\n\r\n".
                     $buf;
-                echo 'WRITEBUF+ ';
+                    
                 $this->_bufferLen -= strlen($buf);
-                $this->_currentMaxRetryWithoutTransfer = 0;
+                $this->_checkAnswers($forceAnswer);
                 
             } else {
                 // reinsert buf into buffer (at the beginning)
                 array_unshift($this->_buffer, $buf);
+                $this->_bufferLen += strlen($buf);
+                $this->_stats['bucketsCreated']++;
                 return 0;
             }
-        } else {
-            // stream != false ? not normal behaviour here as we do not handle keepalive
-            // and we have connection: close !
-            trigger_error('Stream should not be false', E_USER_WARNING);
         }
         return $bytesWritten;
     }
@@ -281,38 +302,58 @@ class logStreamerHttp
      * Update write stream state and get answers
      * @return bool false if we should not send more data.
      */
-    protected function _checkAnswers()
+    protected function _checkAnswers($force = false)
     {
         if ($this->_stream === false)
             return true;
-            
-        if (feof($this->_stream)) {
-            fclose($this->_stream);
-            if ($this->_writeBuffer !== '') {
-                $this->_stats['writeErrors']++;
-                $this->_writeBuffer = '';
-            }
-            $this->_stream = false;
-            return true;
-        }
+        if (self::DEBUG) echo "_checkAnswers() : need to write ".strlen($this->_writeBuffer)." bytes. Stream=".($this->_stream);
         
         //write ? 
-        if ($this->_writeBuffer !== '') {
-            $writtenBytes = fwrite($this->_stream, $this->_writeBuffer, 16384);
+        if ($this->_writeBuffer != '') {
+            //if (self::DEBUG) echo " feof=".((int) feof($this->_stream))." answerRequired=".((int) $this->_writeAnswerRequired)."\n";
+            
+            if (!feof($this->_stream)) {
+                $writtenBytes = @fwrite($this->_stream, $this->_writeBuffer, $this->_config['writeSize']);
+            } else {
+                $writtenBytes = 0; // feof, so no writes ...
+                fclose($this->_stream);
+                $this->_stream = false;
+                $this->_stats['writeErrors']++;
+                if (self::DEBUG) echo "FEOF DETECTED, RETRY=MAX\n";
+                $this->_currentMaxRetryWithoutTransfer = $this->_config['maxRetryWithoutTransfer'];
+            }
+            $this->_bytesWrittenLast = $writtenBytes;
+            
+            if (self::DEBUG) echo "  BUFSIZE=".strlen($this->_writeBuffer)." WRITTEN ".$writtenBytes." bytes. retry=".$this->_currentMaxRetryWithoutTransfer." stream=".($this->_stream)."\n";
             
             if ($writtenBytes === false || $writtenBytes === 0) {
                 $this->_currentMaxRetryWithoutTransfer++;
                 
-                if ($this->_currentMaxRetryWithoutTransfer == 
+                if ($force === true || $this->_currentMaxRetryWithoutTransfer >= 
                     $this->_config['maxRetryWithoutTransfer']) {
                     
                     // reset packet 
-                    array_unshift(
-                        $this->_buffer, 
-                        substr($this->_writeBuffer, strpos($this->_writeBuffer, "\r\n\r\n"))
-                    );
+                    // if strpos === false, cast to int => position 0
+                    $pos = strpos($this->_writeBuffer, "\r\n\r\n");
+                    if ($pos === false) $pos = 0;
+                    else $pos += 4;
+                    $tmp = substr($this->_writeBuffer, $pos);
+                    if ($tmp != '') {
+                        array_unshift(
+                            $this->_buffer, 
+                            $tmp
+                        );
+                        $this->_bufferLen += strlen($tmp);
+                        $this->_stats['bucketsCreated']++;
+                    }
+                    unset($pos, $tmp);
                     $this->_writeBuffer = '';
                     $this->_currentMaxRetryWithoutTransfer = 0;
+                    
+                    if ($this->_stream !== false) {
+                        fclose($this->_stream);
+                        $this->_stream = false;
+                    }
                     return true;
                 }
                 return false;
@@ -329,20 +370,38 @@ class logStreamerHttp
         }
         
         if ($this->_writeAnswerRequired === true) {
-            $returnCode = fread($this->_stream, 4096);
+        
+            // Code investigator
+            if ($this->_writeBuffer != '') {
+                trigger_error('writeAnswerRequired=true but there is still data in writeBuffer', E_USER_WARNING);
+            }
             
-            if ($returnCode == '') 
-                return false; // we should get data back
-            else {
-                // @todo check return code (must be 200)
-                if (strpos($returnCode, 'HTTP/1.1 200') !== false) {
+            $returnCode = fread($this->_stream, 4096);
+            if (self::DEBUG) echo "  _writeAnswerRequired! Return=".strlen($returnCode)." bytes  errors=".$this->_currentMaxRetryWithoutTransfer."\n";
+            
+            if ($returnCode == '')  {
+                $this->_currentMaxRetryWithoutTransfer++;
+                
+                if ($this->_currentMaxRetryWithoutTransfer >= 
+                    $this->_config['maxRetryWithoutTransfer']) {
+                    if (self::DEBUG) echo '   MAXRETRY REACHED'."\n";
+                    $this->_stats['serverAnsweredNo200']++;
                     $this->_writeAnswerRequired = false;
                     fclose($this->_stream);
                     $this->_stream = false;
                     return true;
-                } else {
+                }
+                
+                return false; // we should get data back
+            } else {
+                // if not a 200, increment error counter
+                if (strpos($returnCode, 'HTTP/1.1 200') === false) {
                     $this->_stats['serverAnsweredNo200']++;
                 }
+                $this->_writeAnswerRequired = false;
+                fclose($this->_stream);
+                $this->_stream = false;
+                return true;
             }
         
         }
@@ -357,10 +416,20 @@ class logStreamerHttp
     {
         $this->_stats['uncompressedBufferSize'] = $this->_uncompressedBufferLen;
         $this->_stats['bufferSize'] = $this->_bufferLen;
-        $this->_stats['writeBufferSize'] = strlen($this->_writeBuffer);
+        $this->_stats['writeBufferSize'] = strlen(
+            substr($this->_writeBuffer, strpos($this->_writeBuffer, "\r\n\r\n")+4)
+        );
         $this->_stats['inputFeof']  = $this->feof();
         $this->_stats['buckets'] = count($this->_buffer);
+        $this->_stats['currentMaxRetryWithoutTransfer'] = $this->_currentMaxRetryWithoutTransfer;
         return $this->_stats;
+    }
+    
+    /**
+     * Bytes written on last pass
+     */
+    public function bytesWrittenLast() {
+        return $this->_bytesWrittenLast;
     }
 
 }
