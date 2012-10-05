@@ -136,6 +136,8 @@ class logstreamerTest extends PHPUnit_Framework_TestCase
         // Init logStreamer
         $this->_init($src);
         //xdebug_start_trace('trace');
+        
+        $startTime = microtime(true);
         while (true) {
             $this->stream->read();
             $this->stream->write();
@@ -152,6 +154,8 @@ class logstreamerTest extends PHPUnit_Framework_TestCase
             usleep(10000);
         } while ($this->stream->dataLeft() > 0 && $i < 100);
         $this->stream->write(true, true);
+        
+        $execTime = microtime(true) - $startTime;
         
         //xdebug_stop_trace();
         
@@ -172,6 +176,11 @@ class logstreamerTest extends PHPUnit_Framework_TestCase
             $this->assertEquals($data['filesize'], strlen(file_get_contents('resultfile.bin')), 'result file size');
             $this->assertEquals($data['md5'], md5(file_get_contents('resultfile.bin')), 'md5 signature');
         }
+        
+        // Test temps d'execution
+        if (isset($data['execTime'])) {
+            $this->assertLessThan($data['execTime'], $execTime, 'execution time');
+        }
     }
     
     public function logprovider()
@@ -188,7 +197,7 @@ class logstreamerTest extends PHPUnit_Framework_TestCase
                     'dataDiscarded' => 0,
                     'uncompressedBufferSize' => 0,
                     'statsFunction' => function($stats) {
-                        if ($stats['writeErrors'] != ($stats['outputConnections']-100))
+                        if ($stats['writeErrors'] != ($stats['outputConnections']-1))
                             return false;
                         if ($stats['bucketsCreated'] ==0)
                             return false;
@@ -207,7 +216,7 @@ class logstreamerTest extends PHPUnit_Framework_TestCase
                     'dataDiscarded' => 0,
                     'uncompressedBufferSize' => 0,
                     'statsFunction' => function($stats) {
-                        if ($stats['writeErrors'] != ($stats['outputConnections']-100))
+                        if ($stats['writeErrors'] != ($stats['outputConnections']-1))
                             return false;
                         if ($stats['bucketsCreated'] ==0)
                             return false;
@@ -225,11 +234,12 @@ class logstreamerTest extends PHPUnit_Framework_TestCase
                     'readErrors'=> 0,
                     'uncompressedBufferSize' => 0,
                     'statsFunction' => function($stats) {
-                        if ($stats['writeErrors'] != ($stats['outputConnections']-100))
+                        if ($stats['writeErrors'] != ($stats['outputConnections']-1))
                             return false;
                         if ($stats['bucketsCreated'] ==0)
                             return false;
-                        if ($stats['writeBufferSize']+$stats['bufferSize'] != $stats['readBytes'])
+                        if ($stats['writeBufferSize']+$stats['bufferSize'] != 
+                           ($stats['readBytes']-$stats['dataDiscarded']))
                             return false;
                         if ($stats['dataDiscarded'] < $stats['readBytes']-4096*4*8)
                             return false;
@@ -245,6 +255,7 @@ class logstreamerTest extends PHPUnit_Framework_TestCase
                 array('target' => 'tcp://127.0.0.1:27009/3pdncwrc.php'), 'testfile.txt', array(
                     'readBytes' => self::$plainLen,
                     'readErrors'=> 0,
+                    'serverAnsweredNo200' => 0,
                     'writeErrors'=> 0,
                     'dataDiscarded' => 0,
                     'buckets' => 0,
@@ -256,7 +267,7 @@ class logstreamerTest extends PHPUnit_Framework_TestCase
                     'statsFunction' => function($stats) {
                         if ($stats['writtenBytes'] < $stats['readBytes'])
                             return false;
-                        if ($stats['bucketsCreated'] != ($stats['outputConnections']-101))
+                        if ($stats['bucketsCreated'] != ($stats['outputConnections']-1))
                             return false;
                         return true;
                     },
@@ -279,7 +290,7 @@ class logstreamerTest extends PHPUnit_Framework_TestCase
                     'statsFunction' => function($stats) {
                         if ($stats['writtenBytes'] < $stats['readBytes'])
                             return false;
-                        if ($stats['bucketsCreated'] != ($stats['outputConnections']-101))
+                        if ($stats['bucketsCreated'] != ($stats['outputConnections']-1))
                             return false;
                         return true;
                     },
@@ -303,7 +314,7 @@ class logstreamerTest extends PHPUnit_Framework_TestCase
                     'statsFunction' => function($stats) {
                         if ($stats['writtenBytes'] == 0)
                             return false;
-                        if ($stats['bucketsCreated'] != ($stats['outputConnections']-101))
+                        if ($stats['bucketsCreated'] != ($stats['outputConnections']-1))
                             return false;
                         return true;
                     },
@@ -328,7 +339,7 @@ class logstreamerTest extends PHPUnit_Framework_TestCase
                     'statsFunction' => function($stats) {
                         if ($stats['writtenBytes'] == 0)
                             return false;
-                        if ($stats['bucketsCreated'] != ($stats['outputConnections']-101))
+                        if ($stats['bucketsCreated'] != ($stats['outputConnections']-1))
                             return false;
                         return true;
                     },
@@ -358,7 +369,7 @@ class logstreamerTest extends PHPUnit_Framework_TestCase
                     'statsFunction' => function($stats) {
                         if ($stats['writtenBytes'] == 0)
                             return false;
-                        if ($stats['bucketsCreated'] != ($stats['outputConnections']-101))
+                        if ($stats['bucketsCreated'] != ($stats['outputConnections']-1))
                             return false;
                         return true;
                     },
@@ -377,7 +388,6 @@ class logstreamerTest extends PHPUnit_Framework_TestCase
                     , 'testfile.txt', array(
                     'readBytes' => self::$plainLen,
                     'readErrors'=> 0,
-                    'writeErrors'=> 0,
                     'dataDiscarded' => 0,
                     'buckets' => 0,
                     'uncompressedBufferSize' => 0, 
@@ -387,9 +397,9 @@ class logstreamerTest extends PHPUnit_Framework_TestCase
                     'statsFunction' => function($stats) {
                         if ($stats['writtenBytes'] == 0)
                             return false;
-                        if ($stats['bucketsCreated'] != ($stats['outputConnections']-101))
+                        if ($stats['bucketsCreated'] != ($stats['outputConnections']-1))
                             return false;
-                        if ($stats['serverAnsweredNo200'] != $stats['outputConnections']) {
+                        if ($stats['writeErrors'] != $stats['outputConnections']) {
                             // in this test, server did not returned in time (everytime)
                             return false;
                         }
@@ -427,6 +437,35 @@ class logstreamerTest extends PHPUnit_Framework_TestCase
                 )
             ),
             
+            // #10 plain data / compression, remote connection sleeps for very long
+            array (
+                array(
+                    'target' => 'tcp://127.0.0.1:27009/10pdcrcsfvl.php', 
+                    'targetProperties' => array(
+                            'sleeploop' => 2, //loop to close
+                        ),
+                    )
+                    , 'testfile.txt', array(
+                    'readBytes' => self::$plainLen,
+                    'readErrors'=> 0,
+                    'dataDiscarded' => 0,
+                    'uncompressedBufferSize' => 0, 
+                    'writeBufferSize' => 0,
+                    'statsFunction' => function($stats) {
+                        if ($stats['writtenBytes'] == 0)
+                            return false;
+                        
+                        // if error, we insert the data back in buffer, so we create many buckets
+                        if ($stats['bucketsCreated'] != $stats['outputConnections']-1)
+                            return false;
+                            
+                        if ($stats['writeErrors'] != $stats['outputConnections'])
+                            return false;
+                        return true;
+                    },
+                    'execTime' => 5,
+                )
+            ),
             
             
         );   

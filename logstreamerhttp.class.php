@@ -385,7 +385,7 @@ class logStreamerHttp
                 if ($this->_currentMaxRetryWithoutTransfer >= 
                     $this->_config['maxRetryWithoutTransfer']) {
                     if (self::DEBUG) echo '   MAXRETRY REACHED'."\n";
-                    $this->_stats['serverAnsweredNo200']++;
+                    $this->_stats['writeErrors']++;
                     $this->_writeAnswerRequired = false;
                     fclose($this->_stream);
                     $this->_stream = false;
@@ -397,6 +397,7 @@ class logStreamerHttp
                 // if not a 200, increment error counter
                 if (strpos($returnCode, 'HTTP/1.1 200') === false) {
                     $this->_stats['serverAnsweredNo200']++;
+                    if (self::DEBUG) echo "Server answered != 200: ".$returnCode."\n\n";
                 }
                 $this->_writeAnswerRequired = false;
                 fclose($this->_stream);

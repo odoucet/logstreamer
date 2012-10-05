@@ -10,6 +10,7 @@ if (!isset($argv[1])) {
 $_readSpeed = 1000; // microsec
 $_readSize  = 4096*4;
 $_closeLoop = false;
+$_sleepLoop = false;
 if (isset($argv[2])) {
     for ($i = 2; $i<$argc; $i++) {
         if (strpos($argv[$i], 'readspeed=') !== false) {
@@ -20,6 +21,9 @@ if (isset($argv[2])) {
         }
         if (strpos($argv[$i], 'closeloop=') !== false) {
             $_closeLoop = (int) substr($argv[$i], strlen('closeloop='));
+        }
+        if (strpos($argv[$i], 'sleeploop=') !== false) {
+            $_sleepLoop = (int) substr($argv[$i], strlen('sleeploop='));
         }
         
     }
@@ -93,6 +97,10 @@ while (true) {
                     // close connection unexpectedly
                     fclose($conn);
                 }
+                if ($_sleepLoop !== false && $loop === $_sleepLoop) {
+                    // sleep for long
+                    sleep(10);
+                }
             }
             
             // write
@@ -132,5 +140,5 @@ function gzdecode($data)
 }
 
 function debug($str) {
-    file_put_contents('/tmp/null', $str, FILE_APPEND);
+    @file_put_contents('/tmp/null', $str, FILE_APPEND);
 }
