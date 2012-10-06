@@ -13,15 +13,15 @@ class logStreamerHttp
     protected $_stream;
     protected $_errno;
     protected $_errstr;
-    protected $_uncompressedBuffer;
-    protected $_uncompressedBufferLen;
+    protected $_buffer;
+    protected $_bufferLen;
     protected $_writeAnswerRequired;
     protected $_bytesWrittenLast;
     
     /**
      * @var array "buckets" to send. Already compressed
      */
-    protected $_buffer;
+    protected $_buckets;
     
     /**
      * @var string write buffer
@@ -31,7 +31,7 @@ class logStreamerHttp
     /** 
      * @var int Size of all buffers aggregated
      */
-    protected $_bufferLen;
+    protected $_bucketsLen;
     
     /**
      * @var array Config options
@@ -46,7 +46,7 @@ class logStreamerHttp
     /**
      * @var string distant URL
      */
-    protected $_distantUrl;
+    protected $_remoteUrl;
     
     /**
      * @see $config['maxRetryWithoutTransfer']
@@ -58,10 +58,10 @@ class logStreamerHttp
     {
         $this->_stream = false;
         $this->_config = $config;
+        $this->_bucketsLen = 0;
+        $this->_buckets = array();
+        $this->_buffer = '';
         $this->_bufferLen = 0;
-        $this->_buffer = array();
-        $this->_uncompressedBuffer = '';
-        $this->_uncompressedBufferLen = 0;
         $this->_currentMaxRetryWithoutTransfer = 0;
         $this->_stats = array (
             'dataDiscarded' => 0, // bytes of data discarded due to memory limit
@@ -73,12 +73,12 @@ class logStreamerHttp
             'bucketsCreated'     => 0, // total number of buckets created
             'serverAnsweredNo200'=> 0, // how many times distant server answered != 200
         );
-        $this->_distantUrl = false;
+        $this->_remoteUrl = false;
         
         if ($urlinput !== false) $this->open($urlinput);
         
         if ($urloutput !== false) {
-            $this->_distantUrl = $urloutput;
+            $this->_remoteUrl = $urloutput;
         }
         
         // @todo check config
@@ -113,73 +113,92 @@ class logStreamerHttp
         if ($stream === false) return false;
         return true;
     }
+
+    /**
+     * Check if we have to drop old buckets when we hit the memory limit.
+     * @return int number of buckets dropped, should not be > 1
+     */
+
+    public function checkBucketLimit()
+    {
+        $dropCount = 0;
+        while ($this->_bucketsLen > $this->_config['maxMemory']*1024) {
+            $dropBucket = array_shift($this->_buckets);
+            $dropBucketLen = strlen($dropBucket);
+            $this->_bucketsLen -= $dropBucketLen;
+            $this->_stats['dataDiscarded'] += $dropBucketLen;
+            unset($dropBucket, $dropBucketLen);
+            $dropCount++;
+        }
+        return $dropCount;
+    }
     
     /**
      * Read data from input
      * @return int|bool  false if any error, else bytes read
      */
     public function read()
-    {        
+    {
         if (feof($this->_input)) return false;
-        $str = @fread($this->_input, $this->_config['readSize']);
 
-        if ($str === false) {
-            // read error
+        if (($str = @fread($this->_input, $this->_config['readSize'])) === false) {
+            // WTF happened ?
             $this->_stats['readErrors']++;
             return false;
         }
-        
-        $len = strlen($str);
-        
-        // Add to buffer ?
-        if ($this->_config['maxMemory']*1024 < ($this->_bufferLen + $this->_uncompressedBufferLen)) {
-            // remove old data to add more
-            $r = array_shift($this->_buffer);
-            $len2 = strlen($r);
-            $this->_bufferLen -= $len2;
-            $this->_stats['dataDiscarded']+= $len2;
-            unset($r, $len2);
+
+        if (($len = strlen($str)) === 0) return 0;
+
+        $this->_buffer .= $str;
+        $this->_bufferLen += $len;
+        $this->_stats['readBytes'] += $len;
+
+        // Try to store data in a bucket after each read. May be optimized to not try after every single read call.
+        $this->store();
+
+        return $len;
+    }
+
+    /**
+     * Store content into buckets
+     * @return int number of buckets created
+     */
+    public function store()
+    {
+        $bucketCount = 0;
+
+        while ($this->_bufferLen >= $this->_config['writeSize']) {
+            if ($this->_config['binary'] === true) {
+                $size = $this->_bufferLen;
+            } else {
+                $size = @strrpos($this->_buffer, "\n");
+
+                // Checking maximum line size
+                if ($size === false) {
+                    $size = $this->_bufferLen;
+                } else {
+                    // Don't forget to include the \n character in the line !!!
+                    $size++;
+                }
+            }
+
+            if ($this->_config['compression'] === true) {
+                $bucket = gzencode(substr($this->_buffer, 0, $size), $this->_config['compressionLevel']);
+                $this->_buckets[] = $bucket;
+                $this->_bucketsLen += strlen($bucket);
+            } else {
+                $this->_buckets[] = substr($this->_buffer, 0, $size);
+                $this->_bucketsLen += $size;
+            }
+
+            $this->_buffer = substr($this->_buffer, $size);
+            $this->_bufferLen -= $size;
+
+            $this->_stats['bucketsCreated']++;
+            $bucketCount++;
         }
 
-        if ($len > 0) {
-            $this->_stats['readBytes'] += $len;
-            
-            $this->_uncompressedBufferLen += $len;
-            $this->_uncompressedBuffer .= $str;
-            
-            // Create a bucket ?
-            if ($this->_uncompressedBufferLen > $this->_config['writeSize']) {
-            
-                if ($this->_config['binary'] === true) {
-                    $pos = $this->_uncompressedBufferLen;
-                } else {
-                    $pos = @strrpos(
-                        $this->_uncompressedBuffer, 
-                        "\n"
-                    );
-                }
-                if ($pos === 0) return $len;
-                
-                if ($this->_config['compression'] === false) {
-                    $this->_buffer[] = substr($this->_uncompressedBuffer, 0, $pos);
-                    $this->_bufferLen += $pos;
-                    
-                } else {
-                    $tmp = gzencode(
-                        substr($this->_uncompressedBuffer, 0, $pos),
-                        $this->_config['compressionLevel']
-                    );
-                    $this->_buffer[] = $tmp;
-                    $this->_bufferLen += strlen($tmp);
-                }
-                $this->_stats['bucketsCreated']++;
-                
-                // clean first buffer
-                $this->_uncompressedBuffer = substr($this->_uncompressedBuffer, $pos);
-                $this->_uncompressedBufferLen -= $pos;
-            }
-        }
-        return $len;
+        return $bucketCount;
     }
     
     public function feof()
@@ -192,7 +211,7 @@ class logStreamerHttp
      */
     public function dataLeft()
     {
-        $cpt = $this->_bufferLen + $this->_uncompressedBufferLen + strlen($this->_writeBuffer);
+        $cpt = $this->_bucketsLen + $this->_bufferLen + strlen($this->_writeBuffer);
         
         /* if an answer is required, we should know that we are still waiting for something
          * this is really crappy code and I need to rewrite it, because it breaks
@@ -216,20 +235,20 @@ class logStreamerHttp
         // if force = true, then write all buffer
         if ($force === true) {
             // Transform buffer if compressed
-            if ($this->_uncompressedBufferLen > 0) {
+            if ($this->_bufferLen > 0) {
                 if ($this->_config['compression'] === true) {
-                    $data = gzencode($this->_uncompressedBuffer,
+                    $data = gzencode($this->_buffer,
                         $this->_config['compressionLevel']
                     );
                 } else {
-                    $data = $this->_uncompressedBuffer;
+                    $data = $this->_buffer;
                 }
             
                 if ($data !== false) {
-                    $this->_uncompressedBufferLen = 0;
-                    $this->_uncompressedBuffer    = '';
-                    $this->_buffer[] = $data;
-                    $this->_bufferLen += strlen($data);
+                    $this->_bufferLen = 0;
+                    $this->_buffer    = '';
+                    $this->_buckets[] = $data;
+                    $this->_bucketsLen += strlen($data);
                 }
             }
         }
@@ -239,17 +258,18 @@ class logStreamerHttp
         if ($this->_checkAnswers($forceAnswer) === false) return 0;
         
         // nothing to write
-        if ($this->_bufferLen === 0 || count($this->_buffer) === 0) return 0; 
+        if ($this->_bucketsLen === 0 || count($this->_buckets) === 0) return 0;
 
         // try to write 'buckets'
-        $buf = array_shift($this->_buffer);
+        $buf = array_shift($this->_buckets);
         $bytesWritten = strlen($buf);
 
         $context = stream_context_create($opts);
 
         if ($this->_stream === false) {
             // pos == 7 to skip tcp://
-            $url = substr($this->_distantUrl, 0, strpos($this->_distantUrl, '/', 7));
+            // TODO: use parse_url
+            $url = substr($this->_remoteUrl, 0, strpos($this->_remoteUrl, '/', 7));
             if (self::DEBUG) echo "\nConnection to $url to send ".strlen($buf)." bytes\n";
             $this->_stream = @stream_socket_client(
                 $url,
@@ -266,17 +286,19 @@ class logStreamerHttp
                 
                 // @todo handle writing to server with no lag
                 // @todo handle URL
-                $uri  = parse_url($this->_distantUrl, PHP_URL_PATH);
-                $host = parse_url($this->_distantUrl, PHP_URL_HOST);
+                $uri  = parse_url($this->_remoteUrl, PHP_URL_PATH);
+                $host = parse_url($this->_remoteUrl, PHP_URL_HOST);
                 $this->_writeBuffer =
                     "POST ".$uri." HTTP/1.1\r\n".
                     "Host: ".$host."\r\n".
-                    "User-Agent: logStreamerHttp v".self::VERSION."\r\n".
+                    "User-Agent: logStreamerHttp ".self::VERSION."\r\n".
+                        // Why not use a standard MIME type for log files ? something more like text/* ?
                     "Content-type: application/x-www-form-urlencoded\r\n";
                     
                 if ($this->_config['compression'] === true) {
                     // forced to use X- header as this 
                     // is not a standard in POST requests
+                    // ??? RFC 2616 14.11 does not prohibit the use of Content-Encoding in HTTP requests
                     $this->_writeBuffer .= "X-Content-Encoding: gzip\r\n";
                 }
                 
@@ -284,13 +306,13 @@ class logStreamerHttp
                     "Connection: Close\r\n\r\n".
                     $buf;
                     
-                $this->_bufferLen -= strlen($buf);
+                $this->_bucketsLen -= strlen($buf);
                 $this->_checkAnswers($forceAnswer);
                 
             } else {
                 // reinsert buf into buffer (at the beginning)
-                array_unshift($this->_buffer, $buf);
-                $this->_bufferLen += strlen($buf);
+                array_unshift($this->_buckets, $buf);
+                $this->_bucketsLen += strlen($buf);
                 $this->_stats['bucketsCreated']++;
                 return 0;
             }
@@ -340,10 +362,10 @@ class logStreamerHttp
                     $tmp = substr($this->_writeBuffer, $pos);
                     if ($tmp != '') {
                         array_unshift(
-                            $this->_buffer, 
+                            $this->_buckets,
                             $tmp
                         );
-                        $this->_bufferLen += strlen($tmp);
+                        $this->_bucketsLen += strlen($tmp);
                         $this->_stats['bucketsCreated']++;
                     }
                     unset($pos, $tmp);
@@ -415,13 +437,13 @@ class logStreamerHttp
      **/
     public function getStats()
     {
-        $this->_stats['uncompressedBufferSize'] = $this->_uncompressedBufferLen;
-        $this->_stats['bufferSize'] = $this->_bufferLen;
+        $this->_stats['uncompressedBufferSize'] = $this->_bufferLen;
+        $this->_stats['bufferSize'] = $this->_bucketsLen;
         $this->_stats['writeBufferSize'] = strlen(
             substr($this->_writeBuffer, strpos($this->_writeBuffer, "\r\n\r\n")+4)
         );
         $this->_stats['inputFeof']  = $this->feof();
-        $this->_stats['buckets'] = count($this->_buffer);
+        $this->_stats['buckets'] = count($this->_buckets);
         $this->_stats['currentMaxRetryWithoutTransfer'] = $this->_currentMaxRetryWithoutTransfer;
         return $this->_stats;
     }
