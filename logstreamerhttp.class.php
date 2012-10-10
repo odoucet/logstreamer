@@ -54,7 +54,7 @@ class logStreamerHttp
     protected $_currentMaxRetryWithoutTransfer;
     
     
-    public function __construct($config, $remoteUrl)
+    public function __construct($config)
     {
         $this->_stream = false;
         $this->_config = $config;
@@ -74,7 +74,11 @@ class logStreamerHttp
             'serverAnsweredNo200'=> 0, // how many times distant server answered != 200
         );
 
-        $this->_remoteUrl = $remoteUrl;
+        $this->_config['maxMemory'] = self::humanToBytes($config['maxMemory']);
+        $this->_config['readSize'] = self::humanToBytes($config['readSize']);
+        $this->_config['writeSize'] = self::humanToBytes($config['writeSize']);
+
+        $this->_remoteUrl = $config['remoteUrl'];
 
         if (!defined('STDIN')) {
             $this->_input = fopen('php://stdin', 'rb');
@@ -204,7 +208,7 @@ class logStreamerHttp
          * the purpose of dataLeft.
          * There is NO data left, just that we cannot end normally without an answer ...
          */
-        if ($this->_writeAnswerRequired === true) 
+        if ($this->_writeAnswerRequired === true)
             $cpt++;
             
         return $cpt;
@@ -337,7 +341,7 @@ class logStreamerHttp
             if ($writtenBytes === false || $writtenBytes === 0) {
                 $this->_currentMaxRetryWithoutTransfer++;
                 
-                if ($force === true || $this->_currentMaxRetryWithoutTransfer >= 
+                if ($force === true || $this->_currentMaxRetryWithoutTransfer >=
                     $this->_config['maxRetryWithoutTransfer']) {
                     
                     // reset packet 
@@ -433,11 +437,57 @@ class logStreamerHttp
         $this->_stats['currentMaxRetryWithoutTransfer'] = $this->_currentMaxRetryWithoutTransfer;
         return $this->_stats;
     }
-    
+
+    /**
+     * Convert Human-readable units into bytes
+     * Note: we use the PHP's integer so values over 2^31 can be unexpected on 32-bit platforms
+     *
+     * @param string value Human-readable value
+     *
+     * @return int Bytes
+     */
+    public static function humanToBytes($value)
+    {
+        $bytes = (int) 0;
+        $decimal = 1;
+        $pos = 0;
+
+        $units = array(
+            'b' => (int) 1,
+            'k' => (int) 1024,
+            'm' => (int) 1024 * 1024,
+            'g' => (int) 1024 * 1024 * 1024
+        );
+        $value = strtolower($value);
+
+        for ($i = 0; $i < strlen($value); $i++) {
+            $digit = $value{$i};
+
+            if (array_key_exists($digit, $units)) {
+                $bytes *= $units[$digit];
+                break;
+            } elseif ($digit === '.') {
+                $decimal = -1;
+                $pos = 0;
+            } else {
+                if ($decimal > 0) {
+                    $bytes *= pow(10, $pos * $decimal);
+                    $bytes += (int) $digit;
+                } else {
+                    $bytes += $digit * pow(10, $pos * $decimal);
+                }
+            }
+
+            $pos++;
+        }
+
+        return (int) round($bytes, 0);
+    }
     /**
      * Bytes written on last pass
      */
-    public function bytesWrittenLast() {
+    public function bytesWrittenLast()
+    {
         return $this->_bytesWrittenLast;
     }
 

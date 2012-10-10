@@ -13,25 +13,21 @@ define('DEBUG', 1);
 
 // @todo Config file ?
 $config = array (
-    'target' => 'http://127.0.0.1/test.php', // target host
-    'maxMemory' => 4 * 1024 * 1024,    // max buffer size for both input/output
-                            // (in bytes)
-                            // Note that memory used can be twice this size
-                            // (for input and output) + internal php usage
-    'binary' => true,       // if plain log files on input, set to false.
-                            // If binary = false, lines will be sent fully
-    'compression' => true, // will compress output with gzip
-    'compressionLevel' => 6,// GZIP Level. Impact on CPU
-    'readSize'   => 16 * 1024,
-    'writeSize'  => 128 * 1024,
+    'remoteUrl'        => 'http://127.0.0.1/test.php',  // target host
+    'maxMemory'        => '4M',                         // max buffer size for both input/output
+                                                        // Note that memory used can be twice this size
+                                                        // (for input and output) + internal php usage
+    'binary'           => true,                         // if plain log files on input, set to false.
+                                                        // If binary = false, lines will be sent fully
+    'compression'      => true,                         // will compress output with gzip
+    'compressionLevel' => 6,                            // GZIP Level. Impact on CPU
+    'readSize'         => '16K',
+    'writeSize'        => '128K',
 );
 
 if (!class_exists('logStreamerHttp')) require 'logstreamerhttp.class.php';
 
-$logStreamer = new logStreamerHttp(
-    $config,
-    $config['target']
-);
+$logStreamer = new logStreamerHttp($config);
 
 $lastPrint = time();
 while (true) {
