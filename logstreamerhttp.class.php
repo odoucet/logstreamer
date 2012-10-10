@@ -121,11 +121,16 @@ class logStreamerHttp
     
     /**
      * Read data from input
-     * @return int|bool  false if any error, else bytes read
+     * @return int|bool  false if EOF, else bytes read
      */
     public function read()
     {
-        if (feof($this->_input)) return false;
+        if (!is_resource($this->_input)) return false;
+
+        if (feof($this->_input)) {
+            fclose($this->_input);
+            return false;
+        }
 
         if (($str = @fread($this->_input, $this->_config['readSize'])) === false) {
             // WTF happened ?
@@ -185,11 +190,6 @@ class logStreamerHttp
         }
 
         return $bucketCount;
-    }
-    
-    public function feof()
-    {
-        return feof($this->_input);
     }
     
     /**
@@ -428,7 +428,7 @@ class logStreamerHttp
         $this->_stats['writeBufferSize'] = strlen(
             substr($this->_writeBuffer, strpos($this->_writeBuffer, "\r\n\r\n")+4)
         );
-        $this->_stats['inputFeof']  = $this->feof();
+        $this->_stats['inputFeof']  = feof($this->_input);
         $this->_stats['buckets'] = count($this->_buckets);
         $this->_stats['currentMaxRetryWithoutTransfer'] = $this->_currentMaxRetryWithoutTransfer;
         return $this->_stats;
