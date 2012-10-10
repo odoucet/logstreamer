@@ -54,7 +54,7 @@ class logStreamerHttp
     protected $_currentMaxRetryWithoutTransfer;
     
     
-    public function __construct($config, $urlinput = false, $urloutput = false)
+    public function __construct($config, $remoteUrl)
     {
         $this->_stream = false;
         $this->_config = $config;
@@ -73,13 +73,16 @@ class logStreamerHttp
             'bucketsCreated'     => 0, // total number of buckets created
             'serverAnsweredNo200'=> 0, // how many times distant server answered != 200
         );
-        $this->_remoteUrl = false;
-        
-        if ($urlinput !== false) $this->open($urlinput);
-        
-        if ($urloutput !== false) {
-            $this->_remoteUrl = $urloutput;
+
+        $this->_remoteUrl = $remoteUrl;
+
+        if (!defined('STDIN')) {
+            $this->_input = fopen('php://stdin', 'rb');
+        } else {
+            $this->_input = STDIN;
         }
+
+        stream_set_blocking($this->_input, 0);
         
         // @todo check config
         // check read at least 4096 bytes w/ compression (or useless)
@@ -95,23 +98,6 @@ class logStreamerHttp
             **/
         }
 
-    }
-    
-    /**
-     * Open input stream
-     * @return bool success or not
-     */
-    public function open($url)
-    {
-        $stream = fopen($url, 'r');
-
-        if (is_resource($stream))
-            stream_set_blocking($stream, 0);
-        
-        $this->_input = $stream;
-
-        if ($stream === false) return false;
-        return true;
     }
 
     /**
@@ -228,7 +214,7 @@ class logStreamerHttp
     /**
      * @var bool Force creation of bucket with remaining data
      * @var bool Force flush of write buffer
-     * @return false if error, else bytes written into writeBuffer
+     * @return bool|int false if error, else bytes written into writeBuffer
      */
     public function write($force = false, $forceAnswer = false)
     {
@@ -268,7 +254,7 @@ class logStreamerHttp
 
         if ($this->_stream === false) {
             // pos == 7 to skip tcp://
-            // TODO: use parse_url
+            // @todo use parse_url
             $url = substr($this->_remoteUrl, 0, strpos($this->_remoteUrl, '/', 7));
             if (self::DEBUG) echo "\nConnection to $url to send ".strlen($buf)." bytes\n";
             $this->_stream = @stream_socket_client(

@@ -26,12 +26,10 @@ $config = array (
     'writeSize' => 4096*32,
 );
 
-if (!class_exists('logStreamerHttp'))
-    require 'logstreamerhttp.class.php';
+if (!class_exists('logStreamerHttp')) require 'logstreamerhttp.class.php';
 
 $logStreamer = new logStreamerHttp(
-    $config, 
-    'php://stdin', 
+    $config,
     $config['target']
 );
 
