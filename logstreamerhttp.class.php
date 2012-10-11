@@ -118,6 +118,7 @@ class logStreamerHttp
         }
 
         stream_set_blocking($this->_input, 0);
+        if (self::DEBUG) echo "Logstreamer Ready. maxMemory: ".$this->_config['maxMemory']." readSize: ".$this->_config['readSize']." writeSize: ".$this->_config['writeSize']."\n";
     }
 
     /**
@@ -172,13 +173,14 @@ class logStreamerHttp
 
     /**
      * Store content into HTTP POST requests in a bucket list
+     * @param bool force creating a bucket even if the buffer is smaller than the minimum bucket size.
      * @return int number of buckets created
      */
-    public function store()
+    public function store($force = false)
     {
         $bucketCount = 0;
 
-        while ($this->_bufferLen >= $this->_config['writeSize']) {
+        while (($force && $this->_bufferLen > 0) || $this->_bufferLen >= $this->_config['writeSize']) {
             if ($this->_config['binary'] === true) {
                 $size = $this->_bufferLen;
             } else {
@@ -317,6 +319,7 @@ class logStreamerHttp
      */
     public function flush()
     {
+        $this->store(true);
         while ($this->_bucketsLen > 0 || count($this->_buckets) > 0 || $this->_writeBuffer !== null) {
             $this->write();
         }
