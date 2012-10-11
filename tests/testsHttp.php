@@ -13,7 +13,7 @@ class logstreamerTest extends PHPUnit_Framework_TestCase
     {
         // Reset default config
         self::$config = array (
-            'target' => 'tcp://127.0.0.1:27010/myurl.php',
+            'remoteUrl' => 'http://127.0.0.1:27010/myurl.php',
             'maxMemory' => 4096,
             'binary' => false,
             'compression' => false,
@@ -68,11 +68,8 @@ class logstreamerTest extends PHPUnit_Framework_TestCase
     protected function _init($src)
     {
         require_once dirname(__FILE__).'/../logstreamer.class.php';
-		$this->stream = new logStreamerHttp(
-            self::$config, 
-            $src,
-            self::$config['target']
-        );
+        self::$config['debugSrc'] = $src;
+		$this->stream = new logStreamerHttp(self::$config);
     }
     
     public static function tearDownAfterClass()
@@ -122,8 +119,8 @@ class logstreamerTest extends PHPUnit_Framework_TestCase
         }
         
         // Launch target if necessary
-        if (isset($config['target'])) {
-            $target = explode('/', $config['target']);
+        if (isset($config['remoteUrl'])) {
+            $target = explode('/', $config['remoteUrl']);
             $args = '';
             if (isset($config['targetProperties'])) {
                 
@@ -135,29 +132,26 @@ class logstreamerTest extends PHPUnit_Framework_TestCase
         
         // Init logStreamer
         $this->_init($src);
-        //xdebug_start_trace('trace');
+        
+        xdebug_start_trace('trace');
         
         $startTime = microtime(true);
         while (true) {
-            $this->stream->read();
+            if ($this->stream->read() === false) break;
             $this->stream->write();
-            if ($this->stream->feof() === true) break;
-            usleep(10000);
         }
         
-        $i = 0;
-        do {
-            $bytesWritten = $this->stream->write(true);
-            if ($this->stream->bytesWrittenLast() == 0)
-                $i++;
-            
-            usleep(10000);
-        } while ($this->stream->dataLeft() > 0 && $i < 100);
-        $this->stream->write(true, true);
+        $this->stream->store(true);
+        while($i<1000) {
+            $this->stream->write();
+            $i++;
+            usleep(1000);
+        }
         
         $execTime = microtime(true) - $startTime;
         
-        //xdebug_stop_trace();
+        
+        xdebug_stop_trace();
         
         $stats = $this->stream->getStats();
         var_dump($stats);
@@ -252,7 +246,7 @@ class logstreamerTest extends PHPUnit_Framework_TestCase
             
             // #3 plain data, no compression, with remote connection
             array (
-                array('target' => 'tcp://127.0.0.1:27009/3pdncwrc.php'), 'testfile.txt', array(
+                array('remoteUrl' => 'tcp://127.0.0.1:27009/3pdncwrc.php'), 'testfile.txt', array(
                     'readBytes' => self::$plainLen,
                     'readErrors'=> 0,
                     'serverAnsweredNo200' => 0,
@@ -276,7 +270,7 @@ class logstreamerTest extends PHPUnit_Framework_TestCase
             
             // #4 binary data, no compression, with remote connection
             array (
-                array('target' => 'tcp://127.0.0.1:27009/4bdncwrc.php', 'binary'    => true,), 'testfile.bin', array(
+                array('remoteUrl' => 'tcp://127.0.0.1:27009/4bdncwrc.php', 'binary'    => true,), 'testfile.bin', array(
                     'readBytes' => self::$binLen,
                     'readErrors'=> 0,
                     'writeErrors'=> 0,
@@ -300,7 +294,7 @@ class logstreamerTest extends PHPUnit_Framework_TestCase
             
             // #5 plain data, compression, with remote connection
             array (
-                array('target' => 'tcp://127.0.0.1:27009/5pdcwrc.php', 'compression' => true,), 'testfile.txt', array(
+                array('remoteUrl' => 'tcp://127.0.0.1:27009/5pdcwrc.php', 'compression' => true,), 'testfile.txt', array(
                     'readBytes' => self::$plainLen,
                     'readErrors'=> 0,
                     'writeErrors'=> 0,
@@ -324,7 +318,7 @@ class logstreamerTest extends PHPUnit_Framework_TestCase
             
             // #6 binary data, compression, with remote connection
             array (
-                array('target' => 'tcp://127.0.0.1:27009/6bdcwrc.php', 'compression' => true,), 'testfile.bin', array(
+                array('remoteUrl' => 'tcp://127.0.0.1:27009/6bdcwrc.php', 'compression' => true,), 'testfile.bin', array(
                     'readBytes' => self::$binLen,
                     'binary'    => true,
                     'readErrors'=> 0,
@@ -350,7 +344,7 @@ class logstreamerTest extends PHPUnit_Framework_TestCase
             // #7 plain data, compression, remote connection and odd config
             array (
                 array(
-                    'target' => 'tcp://127.0.0.1:27009/7pdcrcaoc.php', 
+                    'remoteUrl' => 'tcp://127.0.0.1:27009/7pdcrcaoc.php', 
                     'compression' => true,
                     'readSize' => 4096*1024,
                     'writeSize' => 4096*1024,
@@ -380,7 +374,7 @@ class logstreamerTest extends PHPUnit_Framework_TestCase
             // #8 plain data, compression, remote connection VERY SLOW
             array (
                 array(
-                    'target' => 'tcp://127.0.0.1:27009/8pdcrcvs.php', 
+                    'remoteUrl' => 'tcp://127.0.0.1:27009/8pdcrcvs.php', 
                     'targetProperties' => array(
                             'readspeed' => 1000000, 
                         ),
@@ -393,7 +387,6 @@ class logstreamerTest extends PHPUnit_Framework_TestCase
                     'uncompressedBufferSize' => 0, 
                     'writeBufferSize' => 0,
                     'bufferSize' => 0,
-                    'currentMaxRetryWithoutTransfer' => 10,
                     'statsFunction' => function($stats) {
                         if ($stats['writtenBytes'] == 0)
                             return false;
@@ -411,7 +404,7 @@ class logstreamerTest extends PHPUnit_Framework_TestCase
             // #9 plain data, compression, remote connection unexpectly closed
             array (
                 array(
-                    'target' => 'tcp://127.0.0.1:27009/9pdcrcuc.php', 
+                    'remoteUrl' => 'tcp://127.0.0.1:27009/9pdcrcuc.php', 
                     'targetProperties' => array(
                             'closeloop' => 2, //loop to close
                         ),
@@ -440,7 +433,7 @@ class logstreamerTest extends PHPUnit_Framework_TestCase
             // #10 plain data / compression, remote connection sleeps for very long
             array (
                 array(
-                    'target' => 'tcp://127.0.0.1:27009/10pdcrcsfvl.php', 
+                    'remoteUrl' => 'tcp://127.0.0.1:27009/10pdcrcsfvl.php', 
                     'targetProperties' => array(
                             'sleeploop' => 2, //loop to close
                         ),
