@@ -3,22 +3,22 @@
 
 /**
  * logStreamer on HTTP class
- * test
  * @author Olivier Doucet <odoucet@php.net>
+ * @author Gabriel Barazer <gabriel@oxeva.fr>
  */
 class logStreamerHttp
 {
-    const VERSION = '1.0 (2012-09-24)';
+    const VERSION = '1.1 (2012-10-11)';
     protected $_input;
     protected $_stream;
     protected $_buffer;
     protected $_bufferLen;
-	
-	/**
-	 * @var bool Show debug informations or not.
-	 * This variable is voluntarily public.
-	 */
-	public $debug;
+    
+    /**
+     * @var bool Show debug informations or not.
+     * This variable is voluntarily public.
+     */
+    public $debug;
 
     /**
      * @var array "buckets" to send. Already compressed
@@ -72,7 +72,7 @@ class logStreamerHttp
     
     public function __construct($config)
     {
-		$this->debug = false;
+        $this->debug = false;
         $this->_stream = false;
         $this->_config = $config;
         $this->_bucketsLen = 0;
@@ -119,7 +119,8 @@ class logStreamerHttp
         }
 
         stream_set_blocking($this->_input, 0);
-        if ($this->debug) echo "Logstreamer Ready. maxMemory: ".$this->_config['maxMemory']." readSize: ".$this->_config['readSize']." writeSize: ".$this->_config['writeSize']."\n";
+        if ($this->debug) echo "Logstreamer Ready. maxMemory: ".$this->_config['maxMemory'].
+            " readSize: ".$this->_config['readSize']." writeSize: ".$this->_config['writeSize']."\n";
     }
 
     /**
@@ -231,7 +232,8 @@ class logStreamerHttp
             $bucketCount++;
         }
 
-        if ($bucketCount > 0) $this->checkBucketLimit();  // New buckets have been stored, now check if we don't have too much. If so, drop the older ones.
+        // New buckets have been stored, now check if we don't have too much. If so, drop the older ones.
+        if ($bucketCount > 0) $this->checkBucketLimit();  
 
         return $bucketCount;
     }
@@ -249,7 +251,8 @@ class logStreamerHttp
             $this->_writePos = 0;
             $this->_responseBuffer = null;
             $this->_bucketsLen -= strlen($this->_writeBuffer);
-            if ($this->debug) echo "Inserting bucket in the write buffer (".strlen($this->_writeBuffer)." bytes), ".count($this->_buckets)." buckets remaining (".$this->_bucketsLen." bytes)\n";
+            if ($this->debug) echo "Inserting bucket in the write buffer (".strlen($this->_writeBuffer).
+                " bytes), ".count($this->_buckets)." buckets remaining (".$this->_bucketsLen." bytes)\n";
         }
 
         if (is_resource($this->_stream) && feof($this->_stream)) {

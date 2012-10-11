@@ -3,12 +3,12 @@ define('NBLOOP', 500);
 
 class logstreamerTest extends PHPUnit_Framework_TestCase
 {
-	protected $stream;
-    protected static $config;
-    protected static $plainSig;
-    protected static $plainLen;
-    protected static $binSig;
-    protected static $binLen;
+    public $stream;
+    public static $config;
+    public static $plainSig;
+    public static $plainLen;
+    public static $binSig;
+    public static $binLen;
     
     public function tearDown()
     {
@@ -35,7 +35,7 @@ class logstreamerTest extends PHPUnit_Framework_TestCase
         
     }
     
-	public static function setUpBeforeClass()
+    public static function setUpBeforeClass()
     {
         chdir(dirname(__FILE__));
         
@@ -64,13 +64,13 @@ class logstreamerTest extends PHPUnit_Framework_TestCase
         self::$binSig = md5($str);
         self::$binLen = strlen($str);
         unset($str);
-	}
+    }
     
     protected function _init($src)
     {
         require_once dirname(__FILE__).'/../logstreamer.class.php';
         self::$config['debugSrc'] = $src;
-		$this->stream = new logStreamerHttp(self::$config);
+        $this->stream = new logStreamerHttp(self::$config);
     }
     
     public static function tearDownAfterClass()
@@ -80,13 +80,13 @@ class logstreamerTest extends PHPUnit_Framework_TestCase
         if (file_exists('testfile.bin'))
             unlink('testfile.bin');
     }
-	
-	public function testInitBasic()
-	{
+    
+    public function testInitBasic()
+    {
         require_once dirname(__FILE__).'/../logstreamerhttp.class.php';
-		$test = new logStreamerHttp(self::$config);
+        $test = new logStreamerHttp(self::$config);
         $this->assertTrue($test instanceof logStreamerHttp);
-	}
+    }
     
     // Test php mini server is working; mandatory for all tests
     public function testServer()
@@ -135,7 +135,7 @@ class logstreamerTest extends PHPUnit_Framework_TestCase
         $this->_init($src);
         
         //xdebug_start_trace('trace');
-		//$this->stream->debug = true;
+        //$this->stream->debug = true;
         
         usleep(1000000);
         
@@ -146,7 +146,7 @@ class logstreamerTest extends PHPUnit_Framework_TestCase
         }
         
         $this->stream->store(true);
-        while($i<NBLOOP) {
+        while ($i<NBLOOP) {
             $this->stream->write();
             $i++;
             usleep(10000);
@@ -275,7 +275,9 @@ class logstreamerTest extends PHPUnit_Framework_TestCase
             
             // #4 binary data, no compression, with remote connection
             array (
-                array('remoteUrl' => 'http://127.0.0.1:27009/4bdncwrc.php', 'binary'    => true,), 'testfile.bin', array(
+                array('remoteUrl' => 'http://127.0.0.1:27009/4bdncwrc.php', 'binary'    => true,), 
+                'testfile.bin', 
+                array(
                     'readBytes' => self::$binLen,
                     'readErrors'=> 0,
                     'writeErrors'=> 0,
@@ -297,7 +299,9 @@ class logstreamerTest extends PHPUnit_Framework_TestCase
             
             // #5 plain data, compression, with remote connection
             array (
-                array('remoteUrl' => 'http://127.0.0.1:27009/5pdcwrc.php', 'compression' => true,), 'testfile.txt', array(
+                array('remoteUrl' => 'http://127.0.0.1:27009/5pdcwrc.php', 'compression' => true,), 
+                'testfile.txt', 
+                array(
                     'readBytes' => self::$plainLen,
                     'readErrors'=> 0,
                     'writeErrors'=> 0,
@@ -319,7 +323,9 @@ class logstreamerTest extends PHPUnit_Framework_TestCase
             
             // #6 binary data, compression, with remote connection
             array (
-                array('remoteUrl' => 'http://127.0.0.1:27009/6bdcwrc.php', 'compression' => true,), 'testfile.bin', array(
+                array('remoteUrl' => 'http://127.0.0.1:27009/6bdcwrc.php', 'compression' => true,), 
+                'testfile.bin', 
+                array(
                     'readBytes' => self::$binLen,
                     'binary'    => true,
                     'readErrors'=> 0,
@@ -388,12 +394,12 @@ class logstreamerTest extends PHPUnit_Framework_TestCase
                             return 'errOutputConn';
                         if ($stats['writeBufferLen'] == 0)
                             return 'errBufferLen';
-						
-						// we should send at least one bucket, even if it is slow
-						if ($stats['bucketsCreated'] == $stats['buckets'])
-                            return 'errBucketsCreated';	
-							
-						// @todo : no writeErrors ? expected or not ?
+                        
+                        // we should send at least one bucket, even if it is slow
+                        if ($stats['bucketsCreated'] == $stats['buckets'])
+                            return 'errBucketsCreated';    
+                            
+                        // @todo : no writeErrors ? expected or not ?
                         return true;
                     },
                 )
@@ -417,7 +423,7 @@ class logstreamerTest extends PHPUnit_Framework_TestCase
                             return 'errWrittenBytes';
                         if ($stats['bucketsLen'] == 0)
                             return 'errBucketsLen';
-						if ($stats['writeErrors'] == 0)
+                        if ($stats['writeErrors'] == 0)
                             return 'errWriteErrors';
                         return true;
                     },
@@ -444,8 +450,8 @@ class logstreamerTest extends PHPUnit_Framework_TestCase
                         // very long == only time for one connection
                         if ($stats['outputConnections'] != 1)
                             return false;
-						if ($stats['buckets'] != $stats['bucketsCreated']-1)
-							return false;
+                        if ($stats['buckets'] != $stats['bucketsCreated']-1)
+                            return false;
                         return true;
                     },
                     'execTime' => 6,
