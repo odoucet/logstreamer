@@ -256,7 +256,7 @@ class logStreamerHttp
             if (self::DEBUG) echo "Inserting bucket in the write buffer, ".count($this->_buckets)." buckets remaining (".$this->_bucketsLen." bytes)\n";
         }
 
-        if (feof($this->_stream)) {
+        if (is_resource($this->_stream) && feof($this->_stream)) {
             $this->_stats['writeErrors']++;
             fclose($this->_stream);
             $this->_stream = null;
@@ -279,6 +279,8 @@ class logStreamerHttp
             $this->_writePos = 0;
             $this->_responseBuffer = null;
         }
+
+
 
         if ($this->_writePos < strlen($this->_writeBuffer) &&
             stream_select($r = array(), $w = array($this->_stream), $e = array(), 0) > 0) {
@@ -316,6 +318,8 @@ class logStreamerHttp
                     $this->_responseBuffer = null;
                     return 0;
                 }
+                fclose($this->_stream);
+                $this->_stream = null;
             }
         }
     }
