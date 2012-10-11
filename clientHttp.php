@@ -23,6 +23,7 @@ $config = array (
     'compressionLevel' => 6,                            // GZIP Level. Impact on CPU
     'readSize'         => '16K',
     'writeSize'        => '128K',
+    'maxRetries'       => 10,                           // Maximum failed HTTP requests before aborting
 );
 
 if (!class_exists('logStreamerHttp')) require 'logstreamerhttp.class.php';

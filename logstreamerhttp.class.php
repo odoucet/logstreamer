@@ -114,21 +114,6 @@ class logStreamerHttp
         }
 
         stream_set_blocking($this->_input, 0);
-        
-        // @todo check config
-        // check read at least 4096 bytes w/ compression (or useless)
-        
-        if (!isset($this->_config['maxRetryWithoutTransfer'])) {
-            $this->_config['maxRetryWithoutTransfer'] = 10;
-            /**
-            Each loop in client, we do one try to write() (+ connect if necessary).
-            Connect always returned true because it is async. That's why we do not know
-            immediately if connection succeeded. Then, we need to decide when we
-            consider the connection as "failed".
-            After 'maxRetryWithoutTransfer' pass at 0 writes, we consider a failure.
-            **/
-        }
-
     }
 
     /**
