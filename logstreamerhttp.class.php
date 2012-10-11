@@ -3,8 +3,10 @@
 
 /**
  * logStreamer on HTTP class
+ * test
  * @author Olivier Doucet <odoucet@php.net>
  */
+
 class logStreamerHttp
 {
     const VERSION = '1.0 (2012-09-24)';

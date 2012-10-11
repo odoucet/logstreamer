@@ -7,6 +7,7 @@
  * @version 0.0.1
  * @author Olivier Doucet <odoucet@php.net>
  *
+ *
  */
 
 define('DEBUG', 1);
