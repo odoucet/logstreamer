@@ -135,6 +135,7 @@ class logstreamerTest extends PHPUnit_Framework_TestCase
         $this->_init($src);
         
         //xdebug_start_trace('trace');
+		//$this->stream->debug = true;
         
         usleep(1000000);
         
@@ -157,7 +158,7 @@ class logstreamerTest extends PHPUnit_Framework_TestCase
         //xdebug_stop_trace();
         
         $stats = $this->stream->getStats();
-        var_dump($stats);
+        //var_dump($stats);
         if (isset($data['statsFunction'])) {
             $this->assertTrue($data['statsFunction']($stats), 'custom check function');
         }
@@ -379,10 +380,7 @@ class logstreamerTest extends PHPUnit_Framework_TestCase
                     'readBytes' => self::$plainLen,
                     'readErrors'=> 0,
                     'dataDiscarded' => 0,
-                    'buckets' => 0,
                     'bufferLen' => 0, 
-                    'writeBufferLen' => 0,
-                    'bucketsLen' => 0,
                     'statsFunction' => function($stats) {
                         if ($stats['writtenBytes'] == 0)
                             return 'errWrittenBytes';
@@ -390,6 +388,11 @@ class logstreamerTest extends PHPUnit_Framework_TestCase
                             return 'errOutputConn';
                         if ($stats['writeBufferLen'] == 0)
                             return 'errBufferLen';
+						
+						// we should send at least one bucket, even if it is slow
+						if ($stats['bucketsCreated'] == $stats['buckets'])
+                            return 'errBucketsCreated';	
+							
 						// @todo : no writeErrors ? expected or not ?
                         return true;
                     },
@@ -409,7 +412,6 @@ class logstreamerTest extends PHPUnit_Framework_TestCase
                     'readErrors'=> 0,
                     'dataDiscarded' => 0,
                     'bufferLen' => 0, 
-                    'writeBufferLen' => 0,
                     'statsFunction' => function($stats) {
                         if ($stats['writtenBytes'] == 0)
                             return 'errWrittenBytes';
@@ -435,17 +437,18 @@ class logstreamerTest extends PHPUnit_Framework_TestCase
                     'readErrors'=> 0,
                     'dataDiscarded' => 0,
                     'bufferLen' => 0, 
-                    'writeBufferLen' => 0,
                     'statsFunction' => function($stats) {
                         if ($stats['writtenBytes'] == 0)
                             return false;
                         
-                        // if error, we insert the data back in buffer, so we create many buckets
-                        if ($stats['writeErrors'] != $stats['outputConnections'])
+                        // very long == only time for one connection
+                        if ($stats['outputConnections'] != 1)
                             return false;
+						if ($stats['buckets'] != $stats['bucketsCreated']-1)
+							return false;
                         return true;
                     },
-                    'execTime' => 5,
+                    'execTime' => 6,
                 )
             ),
             
