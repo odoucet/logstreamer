@@ -155,7 +155,7 @@ class logStreamerHttp
             return false;
         }
 
-        if (($str = fread($this->_input, $this->_config['readSize'])) === false) {
+        if (($str = @fread($this->_input, $this->_config['readSize'])) === false) {
             // WTF happened ?
             $this->_stats['readErrors']++;
             return false;
@@ -326,120 +326,10 @@ class logStreamerHttp
         $this->store(true);
         while ($this->_bucketsLen > 0 || count($this->_buckets) > 0 || $this->_writeBuffer !== null) {
             $this->write();
+            usleep(1000);
         }
     }
 
-    /**
-     * Update write stream state and get answers
-     * @return bool false if we should not send more data.
-     */
-    protected function _checkAnswers($force = false)
-    {
-        if ($this->_stream === false)
-            return true;
-        if (self::DEBUG) echo "_checkAnswers() : need to write ".strlen($this->_writeBuffer)." bytes. Stream=".($this->_stream);
-        
-        //write ? 
-        if ($this->_writeBuffer != '') {
-            //if (self::DEBUG) echo " feof=".((int) feof($this->_stream))." answerRequired=".((int) $this->_writeAnswerRequired)."\n";
-            
-            if (!feof($this->_stream)) {
-                $writtenBytes = @fwrite($this->_stream, $this->_writeBuffer, $this->_config['writeSize']);
-            } else {
-                $writtenBytes = 0; // feof, so no writes ...
-                fclose($this->_stream);
-                $this->_stream = false;
-                $this->_stats['writeErrors']++;
-                if (self::DEBUG) echo "FEOF DETECTED, RETRY=MAX\n";
-                $this->_currentMaxRetryWithoutTransfer = $this->_config['maxRetryWithoutTransfer'];
-            }
-            $this->_bytesWrittenLast = $writtenBytes;
-            
-            if (self::DEBUG) echo "  BUFSIZE=".strlen($this->_writeBuffer)." WRITTEN ".$writtenBytes." bytes. retry=".$this->_currentMaxRetryWithoutTransfer." stream=".($this->_stream)."\n";
-            
-            if ($writtenBytes === false || $writtenBytes === 0) {
-                $this->_currentMaxRetryWithoutTransfer++;
-                
-                if ($force === true || $this->_currentMaxRetryWithoutTransfer >=
-                    $this->_config['maxRetryWithoutTransfer']) {
-                    
-                    // reset packet 
-                    // if strpos === false, cast to int => position 0
-                    $pos = strpos($this->_writeBuffer, "\r\n\r\n");
-                    if ($pos === false) $pos = 0;
-                    else $pos += 4;
-                    $tmp = substr($this->_writeBuffer, $pos);
-                    if ($tmp != '') {
-                        array_unshift(
-                            $this->_buckets,
-                            $tmp
-                        );
-                        $this->_bucketsLen += strlen($tmp);
-                        $this->_stats['bucketsCreated']++;
-                    }
-                    unset($pos, $tmp);
-                    $this->_writeBuffer = '';
-                    $this->_currentMaxRetryWithoutTransfer = 0;
-                    
-                    if ($this->_stream !== false) {
-                        fclose($this->_stream);
-                        $this->_stream = false;
-                    }
-                    return true;
-                }
-                return false;
-            
-            }
-            
-            $this->_writeBuffer = substr($this->_writeBuffer, $writtenBytes);
-            $this->_stats['writtenBytes'] += $writtenBytes;
-            
-            if ($this->_writeBuffer == '') {
-                // we have written all data, now wait for an answer
-                $this->_writeAnswerRequired = true;
-            }
-        }
-        
-        if ($this->_writeAnswerRequired === true) {
-        
-            // Code investigator
-            if ($this->_writeBuffer != '') {
-                trigger_error('writeAnswerRequired=true but there is still data in writeBuffer', E_USER_WARNING);
-            }
-            
-            $returnCode = fread($this->_stream, 4096);
-            if (self::DEBUG) echo "  _writeAnswerRequired! Return=".strlen($returnCode)." bytes  errors=".$this->_currentMaxRetryWithoutTransfer."\n";
-            
-            if ($returnCode == '')  {
-                $this->_currentMaxRetryWithoutTransfer++;
-                
-                if ($this->_currentMaxRetryWithoutTransfer >= 
-                    $this->_config['maxRetryWithoutTransfer']) {
-                    if (self::DEBUG) echo '   MAXRETRY REACHED'."\n";
-                    $this->_stats['writeErrors']++;
-                    $this->_writeAnswerRequired = false;
-                    fclose($this->_stream);
-                    $this->_stream = false;
-                    return true;
-                }
-                
-                return false; // we should get data back
-            } else {
-                // if not a 200, increment error counter
-                if (strpos($returnCode, 'HTTP/1.1 200') === false) {
-                    $this->_stats['serverAnsweredNo200']++;
-                    if (self::DEBUG) echo "Server answered != 200: ".$returnCode."\n\n";
-                }
-                $this->_writeAnswerRequired = false;
-                fclose($this->_stream);
-                $this->_stream = false;
-                return true;
-            }
-        
-        }
-        return false;
-    }
-    
     /** 
      * Returns statistics array
      * @return array
