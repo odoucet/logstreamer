@@ -6,7 +6,6 @@
  * test
  * @author Olivier Doucet <odoucet@php.net>
  */
-
 class logStreamerHttp
 {
     const VERSION = '1.0 (2012-09-24)';
@@ -380,7 +379,7 @@ class logStreamerHttp
                 $pos = 0;
             } else {
                 if ($decimal > 0) {
-                    $bytes *= pow(10, $pos * $decimal);
+                    $bytes *= 10;
                     $bytes += (int) $digit;
                 } else {
                     $bytes += $digit * pow(10, $pos * $decimal);
