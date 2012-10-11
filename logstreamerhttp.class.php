@@ -9,11 +9,16 @@
 class logStreamerHttp
 {
     const VERSION = '1.0 (2012-09-24)';
-    const DEBUG   = 0;
     protected $_input;
     protected $_stream;
     protected $_buffer;
     protected $_bufferLen;
+	
+	/**
+	 * @var bool Show debug informations or not.
+	 * This variable is voluntarily public.
+	 */
+	public $debug;
 
     /**
      * @var array "buckets" to send. Already compressed
@@ -67,6 +72,7 @@ class logStreamerHttp
     
     public function __construct($config)
     {
+		$this->debug = false;
         $this->_stream = false;
         $this->_config = $config;
         $this->_bucketsLen = 0;
@@ -113,7 +119,7 @@ class logStreamerHttp
         }
 
         stream_set_blocking($this->_input, 0);
-        if (self::DEBUG) echo "Logstreamer Ready. maxMemory: ".$this->_config['maxMemory']." readSize: ".$this->_config['readSize']." writeSize: ".$this->_config['writeSize']."\n";
+        if ($this->debug) echo "Logstreamer Ready. maxMemory: ".$this->_config['maxMemory']." readSize: ".$this->_config['readSize']." writeSize: ".$this->_config['writeSize']."\n";
     }
 
     /**
@@ -243,7 +249,7 @@ class logStreamerHttp
             $this->_writePos = 0;
             $this->_responseBuffer = null;
             $this->_bucketsLen -= strlen($this->_writeBuffer);
-            if (self::DEBUG) echo "Inserting bucket in the write buffer (".strlen($this->_writeBuffer)." bytes), ".count($this->_buckets)." buckets remaining (".$this->_bucketsLen." bytes)\n";
+            if ($this->debug) echo "Inserting bucket in the write buffer (".strlen($this->_writeBuffer)." bytes), ".count($this->_buckets)." buckets remaining (".$this->_bucketsLen." bytes)\n";
         }
 
         if (is_resource($this->_stream) && feof($this->_stream)) {
@@ -256,7 +262,7 @@ class logStreamerHttp
 
             // @see SSL over async sockets won't work because of bug #48182, see https://bugs.php.net/bug.php?id=48182
 
-            if (self::DEBUG) echo "\nConnection to $this->_remoteStream\n";
+            if ($this->debug) echo "\nConnection to $this->_remoteStream\n";
             $this->_stream = stream_socket_client(
                 $this->_remoteStream,
                 $errno = null,
@@ -276,7 +282,7 @@ class logStreamerHttp
             stream_select($r = array(), $w = array($this->_stream), $e = array(), 0) > 0) {
 
             $pos = fwrite($this->_stream, substr($this->_writeBuffer, $this->_writePos), $this->_config['writeSize']);
-            if (self::DEBUG) echo "Wrote $pos bytes\n";
+            if ($this->debug) echo "Wrote $pos bytes\n";
 
             if ($pos === 0) {
                 $this->_stats['writeErrors']++;
@@ -289,7 +295,7 @@ class logStreamerHttp
         }
 
         if ($this->_writePos === strlen($this->_writeBuffer)) {
-            if (self::DEBUG) echo "Write complete, now wait for server ACK before processing the next bucket...\n";
+            if ($this->debug) echo "Write complete, now wait for server ACK before processing the next bucket...\n";
 
             if (stream_select($r = array($this->_stream), $w = array(), $e = array(), 0) > 0) {
                 $this->_responseBuffer .= fread($this->_stream, 8192);
@@ -299,7 +305,7 @@ class logStreamerHttp
                 $response = explode("\r\n", substr($this->_responseBuffer, 0, $responsePos));
                 if (preg_match('/^HTTP\/[0-9]\.[0-9] 200 .*/', $response[0])) {
                     // We got our server positive ACK, moving on to the next bucket
-                    if (self::DEBUG) echo "Got server ACK, processing next bucket...\n";
+                    if ($this->debug) echo "Got server ACK, processing next bucket...\n";
                     $this->_writeBuffer = null;
                 } else {
                     // Server responded with an error, trying again the same bucket
