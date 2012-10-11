@@ -68,12 +68,6 @@ class logStreamerHttp
      */
     protected $_remoteUri;
     
-    /**
-     * @see $config['maxRetryWithoutTransfer']
-     */
-    protected $_currentMaxRetryWithoutTransfer;
-    
-    
     public function __construct($config)
     {
         $this->_stream = false;
@@ -82,7 +76,6 @@ class logStreamerHttp
         $this->_buckets = array();
         $this->_buffer = '';
         $this->_bufferLen = 0;
-        $this->_currentMaxRetryWithoutTransfer = 0;
         $this->_stats = array (
             'dataDiscarded' => 0, // bytes of data discarded due to memory limit
             'readErrors'         => 0, // errors reading data
@@ -348,9 +341,8 @@ class logStreamerHttp
         $this->_stats['writeBufferSize'] = strlen(
             substr($this->_writeBuffer, strpos($this->_writeBuffer, "\r\n\r\n")+4)
         );
-        $this->_stats['inputFeof']  = feof($this->_input);
+        $this->_stats['inputFeof']  = (is_resource($this->_input))?feof($this->_input):'closed';
         $this->_stats['buckets'] = count($this->_buckets);
-        $this->_stats['currentMaxRetryWithoutTransfer'] = $this->_currentMaxRetryWithoutTransfer;
         return $this->_stats;
     }
 
