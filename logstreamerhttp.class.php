@@ -12,11 +12,8 @@ class logStreamerHttp
     const DEBUG   = 0;
     protected $_input;
     protected $_stream;
-    protected $_errno;
-    protected $_errstr;
     protected $_buffer;
     protected $_bufferLen;
-    protected $_writeAnswerRequired;
 
     /**
      * @var array "buckets" to send. Already compressed
@@ -246,7 +243,7 @@ class logStreamerHttp
             $this->_writePos = 0;
             $this->_responseBuffer = null;
             $this->_bucketsLen -= strlen($this->_writeBuffer);
-            if (self::DEBUG) echo "Inserting bucket in the write buffer, ".count($this->_buckets)." buckets remaining (".$this->_bucketsLen." bytes)\n";
+            if (self::DEBUG) echo "Inserting bucket in the write buffer (".strlen($this->_writeBuffer)." bytes), ".count($this->_buckets)." buckets remaining (".$this->_bucketsLen." bytes)\n";
         }
 
         if (is_resource($this->_stream) && feof($this->_stream)) {
@@ -299,20 +296,20 @@ class logStreamerHttp
             }
             if ($responsePos = strpos($this->_responseBuffer, "\r\n\r\n")) {
                 // HTTP response header found, ignoring the body
-                $response = explode("\r\n", substr($this->_responseBuffer, $responsePos));
+                $response = explode("\r\n", substr($this->_responseBuffer, 0, $responsePos));
                 if (preg_match('/^HTTP\/[0-9]\.[0-9] 200 .*/', $response[0])) {
                     // We got our server positive ACK, moving on to the next bucket
                     if (self::DEBUG) echo "Got server ACK, processing next bucket...\n";
                     $this->_writeBuffer = null;
-                    return $this->_writePos;
                 } else {
                     // Server responded with an error, trying again the same bucket
+                    $this->_stats['serverAnsweredNo200']++;
                     $this->_writePos = 0;
                     $this->_responseBuffer = null;
-                    return 0;
                 }
                 fclose($this->_stream);
                 $this->_stream = null;
+                return $this->_writePos;
             }
         }
     }

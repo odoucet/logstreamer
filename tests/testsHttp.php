@@ -1,4 +1,5 @@
 <?php
+define('NBLOOP', 1000);
 
 class logstreamerTest extends PHPUnit_Framework_TestCase
 {
@@ -14,12 +15,12 @@ class logstreamerTest extends PHPUnit_Framework_TestCase
         // Reset default config
         self::$config = array (
             'remoteUrl' => 'http://127.0.0.1:27010/myurl.php',
-            'maxMemory' => 4096,
+            'maxMemory' => '4M',
             'binary' => false,
             'compression' => false,
             'compressionLevel' => 4,
-            'readSize' => 4096*4,
-            'writeSize' => 4096*8,
+            'readSize' => '16K',
+            'writeSize' => '32K',
             'maxRetryWithoutTransfer' => 10,
         );
         
@@ -133,7 +134,9 @@ class logstreamerTest extends PHPUnit_Framework_TestCase
         // Init logStreamer
         $this->_init($src);
         
-        xdebug_start_trace('trace');
+        //xdebug_start_trace('trace');
+        
+        usleep(1000000);
         
         $startTime = microtime(true);
         while (true) {
@@ -142,16 +145,16 @@ class logstreamerTest extends PHPUnit_Framework_TestCase
         }
         
         $this->stream->store(true);
-        while($i<1000) {
+        while($i<NBLOOP) {
             $this->stream->write();
             $i++;
-            usleep(1000);
+            usleep(10000);
         }
         
         $execTime = microtime(true) - $startTime;
         
         
-        xdebug_stop_trace();
+        //xdebug_stop_trace();
         
         $stats = $this->stream->getStats();
         var_dump($stats);
@@ -182,7 +185,7 @@ class logstreamerTest extends PHPUnit_Framework_TestCase
         self::setUpBeforeClass();
         return array (
             
-            
+            /*
             // #0 plain data, no compression, no remote connection
             array (
                 array(), 'testfile.txt', array(
@@ -191,12 +194,14 @@ class logstreamerTest extends PHPUnit_Framework_TestCase
                     'dataDiscarded' => 0,
                     'uncompressedBufferSize' => 0,
                     'statsFunction' => function($stats) {
-                        if ($stats['writeErrors'] != ($stats['outputConnections']-1))
-                            return false;
+                        if ($stats['writeErrors'] < NBLOOP)
+                            return 'errWriteErrors';
+                        if ($stats['writeErrors'] != $stats['outputConnections']) 
+                            return 'errWriteErrorsDiffFromOutputConn';
                         if ($stats['bucketsCreated'] ==0)
-                            return false;
-                        if ($stats['writeBufferSize']+$stats['bufferSize'] != $stats['readBytes'])
-                            return false;
+                            return 'errBucketsCreated';
+                        if ($stats['writeBufferSize']+$stats['bufferSize'] < $stats['readBytes'])
+                            return 'errReadBytesNotMatchBufferSize';
                         return true;
                     },
                 )
@@ -210,12 +215,14 @@ class logstreamerTest extends PHPUnit_Framework_TestCase
                     'dataDiscarded' => 0,
                     'uncompressedBufferSize' => 0,
                     'statsFunction' => function($stats) {
-                        if ($stats['writeErrors'] != ($stats['outputConnections']-1))
-                            return false;
+                        if ($stats['writeErrors'] < NBLOOP)
+                            return 'errWriteErrors';
+                        if ($stats['writeErrors'] != $stats['outputConnections']) 
+                            return 'errWriteErrorsDiffFromOutputConn';
                         if ($stats['bucketsCreated'] ==0)
-                            return false;
-                        if ($stats['writeBufferSize']+$stats['bufferSize'] != $stats['readBytes'])
-                            return false;
+                            return 'errBucketsCreated';
+                        if ($stats['writeBufferSize']+$stats['bufferSize'] < $stats['readBytes'])
+                            return 'errReadBytesNotMatchBufferSize';
                         return true;
                     },
                 )
@@ -223,22 +230,21 @@ class logstreamerTest extends PHPUnit_Framework_TestCase
             
             // #2 plain data, no compression, no remote connection, small buffer
             array (
-                array('maxMemory' => 1), 'testfile.txt', array(
+                array('maxMemory' => 4096), 'testfile.txt', array(
                     'readBytes' => self::$plainLen, // full buffer
                     'readErrors'=> 0,
                     'uncompressedBufferSize' => 0,
                     'statsFunction' => function($stats) {
-                        if ($stats['writeErrors'] != ($stats['outputConnections']-1))
-                            return false;
-                        if ($stats['bucketsCreated'] ==0)
-                            return false;
-                        if ($stats['writeBufferSize']+$stats['bufferSize'] != 
-                           ($stats['readBytes']-$stats['dataDiscarded']))
-                            return false;
-                        if ($stats['dataDiscarded'] < $stats['readBytes']-4096*4*8)
-                            return false;
-                        if ($stats['dataDiscarded'] > $stats['readBytes']-4096*4)
-                            return false;
+                        if ($stats['writeErrors'] < NBLOOP)
+                            return 'errWriteErrors';
+                        if ($stats['writeErrors'] != $stats['outputConnections']) 
+                            return 'errWriteErrorsDiffFromOutputConn';
+                        if ($stats['bufferSize'] != 0)
+                            return 'errBufSize';
+                        if ($stats['writeBufferSize'] == 0)
+                            return 'errWriteBufSize';
+                        if ($stats['dataDiscarded'] < $stats['readBytes'])
+                            return 'errDataDiscardedTooLow';
                         return true;
                     },
                 )
@@ -246,7 +252,7 @@ class logstreamerTest extends PHPUnit_Framework_TestCase
             
             // #3 plain data, no compression, with remote connection
             array (
-                array('remoteUrl' => 'tcp://127.0.0.1:27009/3pdncwrc.php'), 'testfile.txt', array(
+                array('remoteUrl' => 'http://127.0.0.1:27009/3pdncwrc.php'), 'testfile.txt', array(
                     'readBytes' => self::$plainLen,
                     'readErrors'=> 0,
                     'serverAnsweredNo200' => 0,
@@ -261,13 +267,11 @@ class logstreamerTest extends PHPUnit_Framework_TestCase
                     'statsFunction' => function($stats) {
                         if ($stats['writtenBytes'] < $stats['readBytes'])
                             return false;
-                        if ($stats['bucketsCreated'] != ($stats['outputConnections']-1))
-                            return false;
                         return true;
                     },
                 )
             ),
-            
+            */
             // #4 binary data, no compression, with remote connection
             array (
                 array('remoteUrl' => 'tcp://127.0.0.1:27009/4bdncwrc.php', 'binary'    => true,), 'testfile.bin', array(

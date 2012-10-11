@@ -71,7 +71,7 @@ while (true) {
             $contentLength = $posL[1];
             
             // Compression
-            if (preg_match('@X-Content-Encoding: ([a-z]{1,})@', $tmpData, $posL)) {
+            if (preg_match('@Content-Encoding: ([a-z]{1,})@', $tmpData, $posL)) {
                 $compression = trim($posL[1]);
                 debug("(COMPRESSION DETECTED !)\n");
             } else {
