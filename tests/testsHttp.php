@@ -1,5 +1,5 @@
 <?php
-define('NBLOOP', 1000);
+define('NBLOOP', 500);
 
 class logstreamerTest extends PHPUnit_Framework_TestCase
 {
@@ -185,7 +185,7 @@ class logstreamerTest extends PHPUnit_Framework_TestCase
         self::setUpBeforeClass();
         return array (
             
-            /*
+            
             // #0 plain data, no compression, no remote connection
             array (
                 array(), 'testfile.txt', array(
@@ -271,10 +271,10 @@ class logstreamerTest extends PHPUnit_Framework_TestCase
                     },
                 )
             ),
-            */
+            
             // #4 binary data, no compression, with remote connection
             array (
-                array('remoteUrl' => 'tcp://127.0.0.1:27009/4bdncwrc.php', 'binary'    => true,), 'testfile.bin', array(
+                array('remoteUrl' => 'http://127.0.0.1:27009/4bdncwrc.php', 'binary'    => true,), 'testfile.bin', array(
                     'readBytes' => self::$binLen,
                     'readErrors'=> 0,
                     'writeErrors'=> 0,
@@ -288,8 +288,6 @@ class logstreamerTest extends PHPUnit_Framework_TestCase
                     'statsFunction' => function($stats) {
                         if ($stats['writtenBytes'] < $stats['readBytes'])
                             return false;
-                        if ($stats['bucketsCreated'] != ($stats['outputConnections']-1))
-                            return false;
                         return true;
                     },
                 )
@@ -298,7 +296,7 @@ class logstreamerTest extends PHPUnit_Framework_TestCase
             
             // #5 plain data, compression, with remote connection
             array (
-                array('remoteUrl' => 'tcp://127.0.0.1:27009/5pdcwrc.php', 'compression' => true,), 'testfile.txt', array(
+                array('remoteUrl' => 'http://127.0.0.1:27009/5pdcwrc.php', 'compression' => true,), 'testfile.txt', array(
                     'readBytes' => self::$plainLen,
                     'readErrors'=> 0,
                     'writeErrors'=> 0,
@@ -312,8 +310,6 @@ class logstreamerTest extends PHPUnit_Framework_TestCase
                     'statsFunction' => function($stats) {
                         if ($stats['writtenBytes'] == 0)
                             return false;
-                        if ($stats['bucketsCreated'] != ($stats['outputConnections']-1))
-                            return false;
                         return true;
                     },
                 )
@@ -322,7 +318,7 @@ class logstreamerTest extends PHPUnit_Framework_TestCase
             
             // #6 binary data, compression, with remote connection
             array (
-                array('remoteUrl' => 'tcp://127.0.0.1:27009/6bdcwrc.php', 'compression' => true,), 'testfile.bin', array(
+                array('remoteUrl' => 'http://127.0.0.1:27009/6bdcwrc.php', 'compression' => true,), 'testfile.bin', array(
                     'readBytes' => self::$binLen,
                     'binary'    => true,
                     'readErrors'=> 0,
@@ -337,8 +333,6 @@ class logstreamerTest extends PHPUnit_Framework_TestCase
                     'statsFunction' => function($stats) {
                         if ($stats['writtenBytes'] == 0)
                             return false;
-                        if ($stats['bucketsCreated'] != ($stats['outputConnections']-1))
-                            return false;
                         return true;
                     },
                 )
@@ -348,7 +342,7 @@ class logstreamerTest extends PHPUnit_Framework_TestCase
             // #7 plain data, compression, remote connection and odd config
             array (
                 array(
-                    'remoteUrl' => 'tcp://127.0.0.1:27009/7pdcrcaoc.php', 
+                    'remoteUrl' => 'http://127.0.0.1:27009/7pdcrcaoc.php', 
                     'compression' => true,
                     'readSize' => 4096*1024,
                     'writeSize' => 4096*1024,
@@ -367,8 +361,6 @@ class logstreamerTest extends PHPUnit_Framework_TestCase
                     'statsFunction' => function($stats) {
                         if ($stats['writtenBytes'] == 0)
                             return false;
-                        if ($stats['bucketsCreated'] != ($stats['outputConnections']-1))
-                            return false;
                         return true;
                     },
                 )
@@ -378,7 +370,7 @@ class logstreamerTest extends PHPUnit_Framework_TestCase
             // #8 plain data, compression, remote connection VERY SLOW
             array (
                 array(
-                    'remoteUrl' => 'tcp://127.0.0.1:27009/8pdcrcvs.php', 
+                    'remoteUrl' => 'http://127.0.0.1:27009/8pdcrcvs.php', 
                     'targetProperties' => array(
                             'readspeed' => 1000000, 
                         ),
@@ -394,8 +386,6 @@ class logstreamerTest extends PHPUnit_Framework_TestCase
                     'statsFunction' => function($stats) {
                         if ($stats['writtenBytes'] == 0)
                             return false;
-                        if ($stats['bucketsCreated'] != ($stats['outputConnections']-1))
-                            return false;
                         if ($stats['writeErrors'] != $stats['outputConnections']) {
                             // in this test, server did not returned in time (everytime)
                             return false;
@@ -408,7 +398,7 @@ class logstreamerTest extends PHPUnit_Framework_TestCase
             // #9 plain data, compression, remote connection unexpectly closed
             array (
                 array(
-                    'remoteUrl' => 'tcp://127.0.0.1:27009/9pdcrcuc.php', 
+                    'remoteUrl' => 'http://127.0.0.1:27009/9pdcrcuc.php', 
                     'targetProperties' => array(
                             'closeloop' => 2, //loop to close
                         ),
@@ -422,11 +412,6 @@ class logstreamerTest extends PHPUnit_Framework_TestCase
                     'statsFunction' => function($stats) {
                         if ($stats['writtenBytes'] == 0)
                             return false;
-                        
-                        // if FEOF, we insert the data back in buffer, so we create many buckets
-                        if ($stats['bucketsCreated'] <= $stats['outputConnections'])
-                            return false;
-                            
                         if ($stats['bufferSize'] == 0)
                             return false;
                         return true;
@@ -437,7 +422,7 @@ class logstreamerTest extends PHPUnit_Framework_TestCase
             // #10 plain data / compression, remote connection sleeps for very long
             array (
                 array(
-                    'remoteUrl' => 'tcp://127.0.0.1:27009/10pdcrcsfvl.php', 
+                    'remoteUrl' => 'http://127.0.0.1:27009/10pdcrcsfvl.php', 
                     'targetProperties' => array(
                             'sleeploop' => 2, //loop to close
                         ),
@@ -453,9 +438,6 @@ class logstreamerTest extends PHPUnit_Framework_TestCase
                             return false;
                         
                         // if error, we insert the data back in buffer, so we create many buckets
-                        if ($stats['bucketsCreated'] != $stats['outputConnections']-1)
-                            return false;
-                            
                         if ($stats['writeErrors'] != $stats['outputConnections'])
                             return false;
                         return true;

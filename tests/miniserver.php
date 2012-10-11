@@ -39,7 +39,7 @@ while (true) {
     $conn = @stream_socket_accept($socket, 1);
     if ($conn === false) {
         file_put_contents('/tmp/null', ".", FILE_APPEND);
-        usleep(10000);
+        usleep(1000);
         continue;
     }
     stream_set_blocking($conn, 0);
@@ -53,7 +53,7 @@ while (true) {
         debug("(read header) tmpData length=".strlen($tmpData)."\n");
         
         if ($tmpData == '') {
-            usleep(10000);
+            usleep(1000);
             continue;
         }
         
@@ -130,7 +130,7 @@ while (true) {
         usleep(1000);
     }
     debug("Closing connection\n");
-    usleep(10000);
+    usleep(1000);
 }
 fclose($socket);
 
