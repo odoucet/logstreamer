@@ -22,11 +22,16 @@ class logStreamerHttp
      * @var array "buckets" to send. Already compressed
      */
     protected $_buckets;
-    
+
     /**
-     * @var string write buffer
+     * @var string buffer containing the bucket being written
      */
     protected $_writeBuffer;
+
+    /**
+     * @var int offset of the write buffer
+     */
+    protected $_writePos;
     
     /** 
      * @var int Size of all buffers aggregated
@@ -42,11 +47,21 @@ class logStreamerHttp
      * @var array Stats array
      */
     protected $_stats;
-    
+
     /**
-     * @var string distant URL
+     * @var string remote stream descriptor
      */
-    protected $_remoteUrl;
+    protected $_remoteStream;
+
+    /**
+     * @var string remote host name
+     */
+    protected $_remoteHost;
+
+    /**
+     * @var string remote URI
+     */
+    protected $_remoteUri;
     
     /**
      * @see $config['maxRetryWithoutTransfer']
@@ -78,7 +93,19 @@ class logStreamerHttp
         $this->_config['readSize'] = self::humanToBytes($config['readSize']);
         $this->_config['writeSize'] = self::humanToBytes($config['writeSize']);
 
-        $this->_remoteUrl = $config['remoteUrl'];
+        // @todo handle HTTP authentication ?
+        $remote = parse_url($config['remoteUrl']);
+        $protocol = (array_key_exists('scheme', $remote) && $remote['scheme'] === 'https') ? 'ssl' : 'tcp';
+        $this->_remoteHost = $remote['host'];
+        $this->_remoteUri = (array_key_exists('path', $remote)) ? $remote['path'] : '/';
+        $this->_remoteUri .= (array_key_exists('query', $remote)) ? '?' . $remote['query'] : '';
+        if (array_key_exists('port', $remote)) {
+            $port = (int) $remote['port'];
+        } else {
+            $port = ($protocol === 'ssl') ? 443 : 80;
+        }
+
+        $this->_remoteStream = $protocol . '://' . $this->_remoteHost . ':' . $port;
 
         if (!defined('STDIN')) {
             $this->_input = fopen('php://stdin', 'rb');
@@ -112,7 +139,7 @@ class logStreamerHttp
     public function checkBucketLimit()
     {
         $dropCount = 0;
-        while ($this->_bucketsLen > $this->_config['maxMemory']*1024) {
+        while ($this->_bucketsLen > $this->_config['maxMemory']) {
             $dropBucket = array_shift($this->_buckets);
             $dropBucketLen = strlen($dropBucket);
             $this->_bucketsLen -= $dropBucketLen;
@@ -136,7 +163,7 @@ class logStreamerHttp
             return false;
         }
 
-        if (($str = @fread($this->_input, $this->_config['readSize'])) === false) {
+        if (($str = fread($this->_input, $this->_config['readSize'])) === false) {
             // WTF happened ?
             $this->_stats['readErrors']++;
             return false;
@@ -155,7 +182,7 @@ class logStreamerHttp
     }
 
     /**
-     * Store content into buckets
+     * Store content into HTTP POST requests in a bucket list
      * @return int number of buckets created
      */
     public function store()
@@ -166,7 +193,7 @@ class logStreamerHttp
             if ($this->_config['binary'] === true) {
                 $size = $this->_bufferLen;
             } else {
-                $size = @strrpos($this->_buffer, "\n");
+                $size = strrpos($this->_buffer, "\n");
 
                 // Checking maximum line size
                 if ($size === false) {
@@ -179,135 +206,97 @@ class logStreamerHttp
 
             if ($this->_config['compression'] === true) {
                 $bucket = gzencode(substr($this->_buffer, 0, $size), $this->_config['compressionLevel']);
-                $this->_buckets[] = $bucket;
-                $this->_bucketsLen += strlen($bucket);
+                $bucketLen += strlen($bucket);
             } else {
-                $this->_buckets[] = substr($this->_buffer, 0, $size);
-                $this->_bucketsLen += $size;
+                $bucket = substr($this->_buffer, 0, $size);
+                $bucketLen += $size;
             }
 
             $this->_buffer = substr($this->_buffer, $size);
             $this->_bufferLen -= $size;
 
+            $writeBuffer =
+                'POST ' . $this->_remoteUri . ' HTTP/1.1' . "\r\n" .
+                    'Host: ' . $this->_remoteHost . "\r\n" .
+                    'User-Agent: logStreamerHttp ' . self::VERSION . "\r\n".
+                    // XXX: Why not use a standard MIME type for log files ? something more like text/* ?
+                    'Content-Type: text/x-log' . "\r\n";
+
+            if ($this->_config['compression'] === true) {
+                // RFC 2616 14.11 does not prohibit the use of Content-Encoding in HTTP requests
+                $writeBuffer .= 'Content-Encoding: gzip' . "\r\n";
+            }
+
+            $writeBuffer .=
+                'Content-Length: ' . $bucketLen . "\r\n".
+                    'Connection: Close' . "\r\n" . // Disable Keep-Alive
+                    "\r\n" . // End of HTTP headers
+                    $bucket; // POST Data
+
+            $this->_buckets[] = $writeBuffer;
+            $this->_bucketsLen += strlen($writeBuffer);
             $this->_stats['bucketsCreated']++;
             $bucketCount++;
         }
+
+        if ($bucketCount > 0) $this->checkBucketLimit();  // New buckets have been stored, now check if we don't have too much. If so, drop the older ones.
 
         return $bucketCount;
     }
     
     /**
-     * @return int bytes not written yet
-     */
-    public function dataLeft()
-    {
-        $cpt = $this->_bucketsLen + $this->_bufferLen + strlen($this->_writeBuffer);
-        
-        /* if an answer is required, we should know that we are still waiting for something
-         * this is really crappy code and I need to rewrite it, because it breaks
-         * the purpose of dataLeft.
-         * There is NO data left, just that we cannot end normally without an answer ...
-         */
-        if ($this->_writeAnswerRequired === true)
-            $cpt++;
-            
-        return $cpt;
-        
-    }
-    
-    /**
-     * @var bool Force creation of bucket with remaining data
-     * @var bool Force flush of write buffer
      * @return bool|int false if error, else bytes written into writeBuffer
      */
-    public function write($force = false, $forceAnswer = false)
+    public function write()
     {
-        // if force = true, then write all buffer
-        if ($force === true) {
-            // Transform buffer if compressed
-            if ($this->_bufferLen > 0) {
-                if ($this->_config['compression'] === true) {
-                    $data = gzencode($this->_buffer,
-                        $this->_config['compressionLevel']
-                    );
-                } else {
-                    $data = $this->_buffer;
-                }
-            
-                if ($data !== false) {
-                    $this->_bufferLen = 0;
-                    $this->_buffer    = '';
-                    $this->_buckets[] = $data;
-                    $this->_bucketsLen += strlen($data);
-                }
-            }
+        // transform 'buckets' into HTTP post requests in the write queue
+
+        if ($this->_writeBuffer === null) {
+            $this->_writeBuffer = array_shift($this->_buckets);
+            $this->_writePos = 0;
+            $this->_bucketsLen -= strlen($bucket);;
         }
-        
-        // actual write to distant server
-        // return true if we can go on and prepare another HTTP request
-        if ($this->_checkAnswers($forceAnswer) === false) return 0;
-        
-        // nothing to write
-        if ($this->_bucketsLen === 0 || count($this->_buckets) === 0) return 0;
 
-        // try to write 'buckets'
-        $buf = array_shift($this->_buckets);
-        $bytesWritten = strlen($buf);
+        if (feof($this->_stream)) {
+            fclose($this->_stream);
+            $this->_stream = null;
+        }
 
-        $context = stream_context_create($opts);
+        if (!is_resource($this->_stream)) {
 
-        if ($this->_stream === false) {
-            // pos == 7 to skip tcp://
-            // @todo use parse_url
-            $url = substr($this->_remoteUrl, 0, strpos($this->_remoteUrl, '/', 7));
-            if (self::DEBUG) echo "\nConnection to $url to send ".strlen($buf)." bytes\n";
-            $this->_stream = @stream_socket_client(
-                $url,
-                $errno, 
-                $errstr, 
+            // @see SSL over async sockets won't work because of bug #48182, see https://bugs.php.net/bug.php?id=48182
+
+            if (self::DEBUG) echo "\nConnection to $this->_remoteStream\n";
+            $this->_stream = stream_socket_client(
+                $this->_remoteStream,
+                $errno = null,
+                $errstr = null,
                 0,
                 STREAM_CLIENT_CONNECT | STREAM_CLIENT_ASYNC_CONNECT
             );
-            $this->_currentMaxRetryWithoutTransfer = 0;
-            
-            if ($this->_stream !== false) {
-                $this->_stats['outputConnections']++;
-                stream_set_blocking($this->_stream, 0);
-                
-                // @todo handle writing to server with no lag
-                // @todo handle URL
-                $uri  = parse_url($this->_remoteUrl, PHP_URL_PATH);
-                $host = parse_url($this->_remoteUrl, PHP_URL_HOST);
-                $this->_writeBuffer =
-                    "POST ".$uri." HTTP/1.1\r\n".
-                    "Host: ".$host."\r\n".
-                    "User-Agent: logStreamerHttp ".self::VERSION."\r\n".
-                        // Why not use a standard MIME type for log files ? something more like text/* ?
-                    "Content-type: application/x-www-form-urlencoded\r\n";
-                    
-                if ($this->_config['compression'] === true) {
-                    // forced to use X- header as this 
-                    // is not a standard in POST requests
-                    // ??? RFC 2616 14.11 does not prohibit the use of Content-Encoding in HTTP requests
-                    $this->_writeBuffer .= "X-Content-Encoding: gzip\r\n";
-                }
-                
-                $this->_writeBuffer .= "Content-Length: " . strlen($buf) . "\r\n".
-                    "Connection: Close\r\n\r\n".
-                    $buf;
-                    
-                $this->_bucketsLen -= strlen($buf);
-                $this->_checkAnswers($forceAnswer);
-                
-            } else {
-                // reinsert buf into buffer (at the beginning)
-                array_unshift($this->_buckets, $buf);
-                $this->_bucketsLen += strlen($buf);
-                $this->_stats['bucketsCreated']++;
+            stream_set_blocking($this->_stream, 0);
+            $this->_stats['outputConnections']++;
+        }
+
+        if (stream_select($r = array(), $w = array($this->_stream), $e = array(), 0) > 0) {
+            $pos = fwrite($this->_stream, substr($this->_writeBuffer, $this->_writePos), $this->_config['writeSize']);
+            if (self::DEBUG) echo "Wrote $pos bytes\n";
+            if ($pos === 0) {
+                fclose($this->_stream);
+                $this->_stream = null;
                 return 0;
             }
+            $this->_writePos += $pos;
         }
-        return $bytesWritten;
+
+        if ($this->_writePos === strlen($this->_writeBuffer)) {
+            if (self::DEBUG) echo "Write complete, now wait for server ACK before processing the next bucket...\n";
+
+
+
+        }
+
+        return ;
     }
     
     /**

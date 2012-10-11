@@ -34,17 +34,14 @@ while (true) {
 
     if ($logStreamer->read() === false) {
         /*
-         * logStreamer->flush() is synchronous and only exists when all bytes are written to the output stream.
+         * logStreamer->flush() is synchronous and only exits when all bytes are written to the output stream.
          * It may be modified to asynchronous if we want to follow the flush progress, but that is unlikely.
          */
         $logStreamer->flush();
         break;
     }
     $logStreamer->write();
-    
-    // if no more data on input, we can stop
-    if ($logStreamer->feof() === true) break;
-    
+
     // @todo intercept signals to write Statistics somewhere
     if (time() != $lastPrint) {
         $lastPrint = time();
