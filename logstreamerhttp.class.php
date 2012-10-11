@@ -118,6 +118,10 @@ class logStreamerHttp
             $this->_input = STDIN;
         }
 
+        if (array_key_exists('debugSrc', $config) && $config['debugSrc'] !== null) {
+            $this->_input = fopen($config['debugSrc'], 'rb');
+        }
+
         stream_set_blocking($this->_input, 0);
         if (self::DEBUG) echo "Logstreamer Ready. maxMemory: ".$this->_config['maxMemory']." readSize: ".$this->_config['readSize']." writeSize: ".$this->_config['writeSize']."\n";
     }
