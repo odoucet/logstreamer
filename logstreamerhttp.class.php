@@ -271,6 +271,8 @@ class logStreamerHttp
             );
             stream_set_blocking($this->_stream, 0);
             $this->_stats['outputConnections']++;
+            $this->_writePos = 0;
+            $this->_responseBuffer = null;
         }
 
         if ($this->_writePos < strlen($this->_writeBuffer) &&
