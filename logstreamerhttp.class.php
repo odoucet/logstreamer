@@ -16,8 +16,7 @@ class logStreamerHttp
     protected $_buffer;
     protected $_bufferLen;
     protected $_writeAnswerRequired;
-    protected $_bytesWrittenLast;
-    
+
     /**
      * @var array "buckets" to send. Already compressed
      */
@@ -27,6 +26,11 @@ class logStreamerHttp
      * @var string buffer containing the bucket being written
      */
     protected $_writeBuffer;
+
+    /**
+     * @var string buffer containing the server response after writing a bucket
+     */
+    protected $_responseBuffer;
 
     /**
      * @var int offset of the write buffer
@@ -191,10 +195,10 @@ class logStreamerHttp
 
             if ($this->_config['compression'] === true) {
                 $bucket = gzencode(substr($this->_buffer, 0, $size), $this->_config['compressionLevel']);
-                $bucketLen += strlen($bucket);
+                $bucketLen = strlen($bucket);
             } else {
                 $bucket = substr($this->_buffer, 0, $size);
-                $bucketLen += $size;
+                $bucketLen = $size;
             }
 
             $this->_buffer = substr($this->_buffer, $size);
@@ -238,11 +242,15 @@ class logStreamerHttp
 
         if ($this->_writeBuffer === null) {
             $this->_writeBuffer = array_shift($this->_buckets);
+            if ($this->_writeBuffer === null) return 0;
             $this->_writePos = 0;
-            $this->_bucketsLen -= strlen($bucket);;
+            $this->_responseBuffer = null;
+            $this->_bucketsLen -= strlen($this->_writeBuffer);
+            if (self::DEBUG) echo "Inserting bucket in the write buffer, ".count($this->_buckets)." buckets remaining (".$this->_bucketsLen." bytes)\n";
         }
 
         if (feof($this->_stream)) {
+            $this->_stats['writeErrors']++;
             fclose($this->_stream);
             $this->_stream = null;
         }
@@ -263,27 +271,57 @@ class logStreamerHttp
             $this->_stats['outputConnections']++;
         }
 
-        if (stream_select($r = array(), $w = array($this->_stream), $e = array(), 0) > 0) {
+        if ($this->_writePos < strlen($this->_writeBuffer) &&
+            stream_select($r = array(), $w = array($this->_stream), $e = array(), 0) > 0) {
+
             $pos = fwrite($this->_stream, substr($this->_writeBuffer, $this->_writePos), $this->_config['writeSize']);
             if (self::DEBUG) echo "Wrote $pos bytes\n";
+
             if ($pos === 0) {
+                $this->_stats['writeErrors']++;
                 fclose($this->_stream);
                 $this->_stream = null;
                 return 0;
             }
+            $this->_stats['writtenBytes'] += $pos;
             $this->_writePos += $pos;
         }
 
         if ($this->_writePos === strlen($this->_writeBuffer)) {
             if (self::DEBUG) echo "Write complete, now wait for server ACK before processing the next bucket...\n";
 
-
-
+            if (stream_select($r = array($this->_stream), $w = array(), $e = array(), 0) > 0) {
+                $this->_responseBuffer .= fread($this->_stream, 8192);
+            }
+            if ($responsePos = strpos($this->_responseBuffer, "\r\n\r\n")) {
+                // HTTP response header found, ignoring the body
+                $response = explode("\r\n", substr($this->_responseBuffer, $responsePos));
+                if (preg_match('/^HTTP\/[0-9]\.[0-9] 200 .*/', $response[0])) {
+                    // We got our server positive ACK, moving on to the next bucket
+                    if (self::DEBUG) echo "Got server ACK, processing next bucket...\n";
+                    $this->_writeBuffer = null;
+                    return $this->_writePos;
+                } else {
+                    // Server responded with an error, trying again the same bucket
+                    $this->_writePos = 0;
+                    $this->_responseBuffer = null;
+                    return 0;
+                }
+            }
         }
-
-        return ;
     }
-    
+
+    /**
+     * Return synchronously when the buckets list and the write queue are flushed
+     * Note: we could also set the socket to blocking mode now to save a few CPU cycles.
+     */
+    public function flush()
+    {
+        while ($this->_bucketsLen > 0 || count($this->_buckets) > 0 || $this->_writeBuffer !== null) {
+            $this->write();
+        }
+    }
+
     /**
      * Update write stream state and get answers
      * @return bool false if we should not send more data.
@@ -457,12 +495,4 @@ class logStreamerHttp
 
         return (int) round($bytes, 0);
     }
-    /**
-     * Bytes written on last pass
-     */
-    public function bytesWrittenLast()
-    {
-        return $this->_bytesWrittenLast;
-    }
-
 }

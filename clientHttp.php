@@ -23,7 +23,6 @@ $config = array (
     'compressionLevel' => 6,                            // GZIP Level. Impact on CPU
     'readSize'         => '16K',
     'writeSize'        => '128K',
-    'maxRetries'       => 10,                           // Maximum failed HTTP requests before aborting
 );
 
 if (!class_exists('logStreamerHttp')) require 'logstreamerhttp.class.php';
@@ -33,14 +32,7 @@ $logStreamer = new logStreamerHttp($config);
 $lastPrint = time();
 while (true) {
 
-    if ($logStreamer->read() === false) {
-        /*
-         * logStreamer->flush() is synchronous and only exits when all bytes are written to the output stream.
-         * It may be modified to asynchronous if we want to follow the flush progress, but that is unlikely.
-         */
-        $logStreamer->flush();
-        break;
-    }
+    if ($logStreamer->read() === false) break;
     $logStreamer->write();
 
     // @todo intercept signals to write Statistics somewhere
@@ -57,23 +49,13 @@ while (true) {
             memory_get_peak_usage(true)/1024/1024
         );
     }
-    
     usleep(1000);
 }
-// final write
-$i = 0;
-echo "Finished ! Flushing buffers ! \n";
-do {
-    $bytesWritten = $logStreamer->write(true);
-    if ($bytesWritten == 0)
-        $i++;
-    echo '.';
-    usleep(10000);
-} while ($logStreamer->dataLeft() > 0 && $i < 100);
-// end
-$logStreamer->write(true, true);
+/*
+ * logStreamer->flush() is synchronous and only exits when all bytes are written to the output stream.
+ * It may be modified to asynchronous if we want to follow the flush progress, but that is unlikely.
+ */
+$logStreamer->flush();
 
-// @todo : if distant host not available, 
-//         we should retry, but how many times ?
 echo "\n";
 if (DEBUG) var_dump($logStreamer->getStats());
