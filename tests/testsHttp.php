@@ -13,7 +13,7 @@ class logstreamerTest extends PHPUnit_Framework_TestCase
     {
         // Reset default config
         self::$config = array (
-            'target' => 'tcp://127.0.0.1:27010/myurl.php',
+            'target' => 'http://127.0.0.1:27010/myurl.php',
             'maxMemory' => 4096,
             'binary' => false,
             'compression' => false,
@@ -68,11 +68,8 @@ class logstreamerTest extends PHPUnit_Framework_TestCase
     protected function _init($src)
     {
         require_once dirname(__FILE__).'/../logstreamer.class.php';
-		$this->stream = new logStreamerHttp(
-            self::$config, 
-            $src,
-            self::$config['target']
-        );
+        self::$config['debugSrc'] = $src;
+		$this->stream = new logStreamerHttp(self::$config);
     }
     
     public static function tearDownAfterClass()
@@ -135,29 +132,19 @@ class logstreamerTest extends PHPUnit_Framework_TestCase
         
         // Init logStreamer
         $this->_init($src);
-        //xdebug_start_trace('trace');
+        
+        xdebug_start_trace('trace');
         
         $startTime = microtime(true);
         while (true) {
-            $this->stream->read();
+            if ($this->stream->read() === false) break;
             $this->stream->write();
-            if ($this->stream->feof() === true) break;
-            usleep(10000);
         }
-        
-        $i = 0;
-        do {
-            $bytesWritten = $this->stream->write(true);
-            if ($this->stream->bytesWrittenLast() == 0)
-                $i++;
-            
-            usleep(10000);
-        } while ($this->stream->dataLeft() > 0 && $i < 100);
-        $this->stream->write(true, true);
+        $this->stream->flush();
         
         $execTime = microtime(true) - $startTime;
         
-        //xdebug_stop_trace();
+        
         
         $stats = $this->stream->getStats();
         var_dump($stats);

@@ -1,1 +1,2 @@
 *.php text eol=lf
+tests/testheaders.txt text eol=crlf
