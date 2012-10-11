@@ -339,9 +339,9 @@ class logStreamerHttp
      **/
     public function getStats()
     {
-        $this->_stats['uncompressedBufferSize'] = $this->_bufferLen;
-        $this->_stats['bufferSize'] = $this->_bucketsLen;
-        $this->_stats['writeBufferSize'] = strlen(
+        $this->_stats['bufferLen'] = $this->_bufferLen;
+        $this->_stats['bucketsLen'] = $this->_bucketsLen;
+        $this->_stats['writeBufferLen'] = strlen(
             substr($this->_writeBuffer, strpos($this->_writeBuffer, "\r\n\r\n")+4)
         );
         $this->_stats['inputFeof']  = (is_resource($this->_input))?feof($this->_input):'closed';

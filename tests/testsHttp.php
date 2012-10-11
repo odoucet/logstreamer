@@ -192,7 +192,7 @@ class logstreamerTest extends PHPUnit_Framework_TestCase
                     'readBytes' => self::$plainLen,
                     'readErrors'=> 0,
                     'dataDiscarded' => 0,
-                    'uncompressedBufferSize' => 0,
+                    'bufferLen' => 0,
                     'statsFunction' => function($stats) {
                         if ($stats['writeErrors'] < NBLOOP)
                             return 'errWriteErrors';
@@ -200,8 +200,8 @@ class logstreamerTest extends PHPUnit_Framework_TestCase
                             return 'errWriteErrorsDiffFromOutputConn';
                         if ($stats['bucketsCreated'] ==0)
                             return 'errBucketsCreated';
-                        if ($stats['writeBufferSize']+$stats['bufferSize'] < $stats['readBytes'])
-                            return 'errReadBytesNotMatchBufferSize';
+                        if ($stats['writeBufferLen']+$stats['bucketsLen'] < $stats['readBytes'])
+                            return 'errReadBytesNotMatchbucketsLen';
                         return true;
                     },
                 )
@@ -213,7 +213,7 @@ class logstreamerTest extends PHPUnit_Framework_TestCase
                     'readBytes' => self::$binLen,
                     'readErrors'=> 0,
                     'dataDiscarded' => 0,
-                    'uncompressedBufferSize' => 0,
+                    'bufferLen' => 0,
                     'statsFunction' => function($stats) {
                         if ($stats['writeErrors'] < NBLOOP)
                             return 'errWriteErrors';
@@ -221,8 +221,8 @@ class logstreamerTest extends PHPUnit_Framework_TestCase
                             return 'errWriteErrorsDiffFromOutputConn';
                         if ($stats['bucketsCreated'] ==0)
                             return 'errBucketsCreated';
-                        if ($stats['writeBufferSize']+$stats['bufferSize'] < $stats['readBytes'])
-                            return 'errReadBytesNotMatchBufferSize';
+                        if ($stats['writeBufferLen']+$stats['bucketsLen'] < $stats['readBytes'])
+                            return 'errReadBytesNotMatchbucketsLen';
                         return true;
                     },
                 )
@@ -233,15 +233,15 @@ class logstreamerTest extends PHPUnit_Framework_TestCase
                 array('maxMemory' => 4096), 'testfile.txt', array(
                     'readBytes' => self::$plainLen, // full buffer
                     'readErrors'=> 0,
-                    'uncompressedBufferSize' => 0,
+                    'bufferLen' => 0,
                     'statsFunction' => function($stats) {
                         if ($stats['writeErrors'] < NBLOOP)
                             return 'errWriteErrors';
                         if ($stats['writeErrors'] != $stats['outputConnections']) 
                             return 'errWriteErrorsDiffFromOutputConn';
-                        if ($stats['bufferSize'] != 0)
+                        if ($stats['bucketsLen'] != 0)
                             return 'errBufSize';
-                        if ($stats['writeBufferSize'] == 0)
+                        if ($stats['writeBufferLen'] == 0)
                             return 'errWriteBufSize';
                         if ($stats['dataDiscarded'] < $stats['readBytes'])
                             return 'errDataDiscardedTooLow';
@@ -259,14 +259,14 @@ class logstreamerTest extends PHPUnit_Framework_TestCase
                     'writeErrors'=> 0,
                     'dataDiscarded' => 0,
                     'buckets' => 0,
-                    'uncompressedBufferSize' => 0, 
-                    'writeBufferSize' => 0,
-                    'bufferSize' => 0,
+                    'bufferLen' => 0, 
+                    'writeBufferLen' => 0,
+                    'bucketsLen' => 0,
                     'md5' => self::$plainSig,
                     'filesize' => self::$plainLen,
                     'statsFunction' => function($stats) {
                         if ($stats['writtenBytes'] < $stats['readBytes'])
-                            return false;
+                            return 'errWrittenBytes';
                         return true;
                     },
                 )
@@ -280,14 +280,14 @@ class logstreamerTest extends PHPUnit_Framework_TestCase
                     'writeErrors'=> 0,
                     'dataDiscarded' => 0,
                     'buckets' => 0,
-                    'uncompressedBufferSize' => 0, 
-                    'writeBufferSize' => 0,
-                    'bufferSize' => 0,
+                    'bufferLen' => 0, 
+                    'writeBufferLen' => 0,
+                    'bucketsLen' => 0,
                     'md5' => self::$binSig,
                     'filesize' => self::$binLen,
                     'statsFunction' => function($stats) {
                         if ($stats['writtenBytes'] < $stats['readBytes'])
-                            return false;
+                            return 'errWrittenBytes';
                         return true;
                     },
                 )
@@ -302,14 +302,14 @@ class logstreamerTest extends PHPUnit_Framework_TestCase
                     'writeErrors'=> 0,
                     'dataDiscarded' => 0,
                     'buckets' => 0,
-                    'uncompressedBufferSize' => 0, 
-                    'writeBufferSize' => 0,
-                    'bufferSize' => 0,
+                    'bufferLen' => 0, 
+                    'writeBufferLen' => 0,
+                    'bucketsLen' => 0,
                     'filesize' => self::$plainLen,
                     'md5' => self::$plainSig,
                     'statsFunction' => function($stats) {
                         if ($stats['writtenBytes'] == 0)
-                            return false;
+                            return 'errWrittenBytes';
                         return true;
                     },
                 )
@@ -325,14 +325,14 @@ class logstreamerTest extends PHPUnit_Framework_TestCase
                     'writeErrors'=> 0,
                     'dataDiscarded' => 0,
                     'buckets' => 0,
-                    'uncompressedBufferSize' => 0, 
-                    'writeBufferSize' => 0,
-                    'bufferSize' => 0,
+                    'bufferLen' => 0, 
+                    'writeBufferLen' => 0,
+                    'bucketsLen' => 0,
                     'filesize' => self::$binLen,
                     'md5' => self::$binSig,
                     'statsFunction' => function($stats) {
                         if ($stats['writtenBytes'] == 0)
-                            return false;
+                            return 'errWrittenBytes';
                         return true;
                     },
                 )
@@ -353,14 +353,14 @@ class logstreamerTest extends PHPUnit_Framework_TestCase
                     'writeErrors'=> 0,
                     'dataDiscarded' => 0,
                     'buckets' => 0,
-                    'uncompressedBufferSize' => 0, 
-                    'writeBufferSize' => 0,
-                    'bufferSize' => 0,
+                    'bufferLen' => 0, 
+                    'writeBufferLen' => 0,
+                    'bucketsLen' => 0,
                     'filesize' => self::$plainLen,
                     'md5' => self::$plainSig,
                     'statsFunction' => function($stats) {
                         if ($stats['writtenBytes'] == 0)
-                            return false;
+                            return 'errWrittenBytes';
                         return true;
                     },
                 )
@@ -380,16 +380,17 @@ class logstreamerTest extends PHPUnit_Framework_TestCase
                     'readErrors'=> 0,
                     'dataDiscarded' => 0,
                     'buckets' => 0,
-                    'uncompressedBufferSize' => 0, 
-                    'writeBufferSize' => 0,
-                    'bufferSize' => 0,
+                    'bufferLen' => 0, 
+                    'writeBufferLen' => 0,
+                    'bucketsLen' => 0,
                     'statsFunction' => function($stats) {
                         if ($stats['writtenBytes'] == 0)
-                            return false;
-                        if ($stats['writeErrors'] != $stats['outputConnections']) {
-                            // in this test, server did not returned in time (everytime)
-                            return false;
-                        }
+                            return 'errWrittenBytes';
+                        if ($stats['outputConnections'] == 0)
+                            return 'errOutputConn';
+                        if ($stats['writeBufferLen'] == 0)
+                            return 'errBufferLen';
+						// @todo : no writeErrors ? expected or not ?
                         return true;
                     },
                 )
@@ -407,13 +408,15 @@ class logstreamerTest extends PHPUnit_Framework_TestCase
                     'readBytes' => self::$plainLen,
                     'readErrors'=> 0,
                     'dataDiscarded' => 0,
-                    'uncompressedBufferSize' => 0, 
-                    'writeBufferSize' => 0,
+                    'bufferLen' => 0, 
+                    'writeBufferLen' => 0,
                     'statsFunction' => function($stats) {
                         if ($stats['writtenBytes'] == 0)
-                            return false;
-                        if ($stats['bufferSize'] == 0)
-                            return false;
+                            return 'errWrittenBytes';
+                        if ($stats['bucketsLen'] == 0)
+                            return 'errBucketsLen';
+						if ($stats['writeErrors'] == 0)
+                            return 'errWriteErrors';
                         return true;
                     },
                 )
@@ -431,8 +434,8 @@ class logstreamerTest extends PHPUnit_Framework_TestCase
                     'readBytes' => self::$plainLen,
                     'readErrors'=> 0,
                     'dataDiscarded' => 0,
-                    'uncompressedBufferSize' => 0, 
-                    'writeBufferSize' => 0,
+                    'bufferLen' => 0, 
+                    'writeBufferLen' => 0,
                     'statsFunction' => function($stats) {
                         if ($stats['writtenBytes'] == 0)
                             return false;
