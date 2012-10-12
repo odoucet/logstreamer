@@ -45,8 +45,8 @@ while (true) {
             $infos['readBytes']/1024/1024, 
             $infos['writtenBytes']/1024/1024,
             $infos['dataDiscarded']/1024/1024,
-            $infos['bufferSize']/1024,
-            $infos['writeBufferSize']/1024/1024,
+            $infos['bucketsLen']/1024,
+            $infos['writeBufferLen']/1024/1024,
             memory_get_usage(true)/1024/1024, 
             memory_get_peak_usage(true)/1024/1024
         );

@@ -282,7 +282,7 @@ class logStreamerHttp
 
 
         if ($this->_writePos < strlen($this->_writeBuffer) &&
-            stream_select($r = array(), $w = array($this->_stream), $e = array(), 0) > 0) {
+            @stream_select($r = array(), $w = array($this->_stream), $e = array(), 0) > 0) {
 
             $pos = fwrite($this->_stream, substr($this->_writeBuffer, $this->_writePos), $this->_config['writeSize']);
             if ($this->debug) echo "Wrote $pos bytes\n";

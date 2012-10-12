@@ -21,6 +21,7 @@ accessible by Apache / the software you'll use
 * edit clientHttp.php and update $config array with your parameters.
 * Do not forget to make clientHttp.php executable (chmod u+x)
 * Use it with Apache for example by adding following line in httpd.conf : 
+    
     CustomLog "|/path/to/clientHttp.php"
 
 Tests
@@ -40,4 +41,8 @@ TODO
 * Handle SSL connections with full async support (still a bug in PHP about that ... read source)
 * Add more compression algorithm than just gzip
 * Check config in __construct()
+* Throttle if server returned 5xx / 40x ...
+* handle redirects (code 3xx)
+
+
  
