@@ -23,6 +23,7 @@ $config = array (
     'compressionLevel' => 6,                            // GZIP Level. Impact on CPU
     'readSize'         => '16K',
     'writeSize'        => '128K',
+    'throttleTimeOnFail'   => 5                             // time to wait in seconds when remote server reports a failure with non-200 HTTP code
 );
 
 if (!class_exists('logStreamerHttp')) require 'logstreamerhttp.class.php';

@@ -69,7 +69,13 @@ class logStreamerHttp
      * @var string remote URI
      */
     protected $_remoteUri;
-    
+
+    /**
+     * @var int Time when throttling started
+     */
+
+    protected $_throttleTime = 0;
+
     public function __construct($config)
     {
         $this->debug = false;
@@ -263,6 +269,11 @@ class logStreamerHttp
 
         if (!is_resource($this->_stream)) {
 
+            if (($this->_throttleTime + $this->_config['throttleTimeOnFail']) > time()) {
+                if ($this->debug) echo 'Connection throttled at ' . $this->_throttleTime . ', waiting until ' . ($this->_throttleTime + $this->_config['throttleTimeOnFail']) . "\n";
+                return 0;
+            }
+
             // @see SSL over async sockets won't work because of bug #48182, see https://bugs.php.net/bug.php?id=48182
 
             if ($this->debug) echo "\nConnection to $this->_remoteStream\n";
@@ -315,6 +326,7 @@ class logStreamerHttp
                     $this->_stats['serverAnsweredNo200']++;
                     $this->_writePos = 0;
                     $this->_responseBuffer = null;
+                    $this->_throttleTime = time();
                 }
                 fclose($this->_stream);
                 $this->_stream = null;
