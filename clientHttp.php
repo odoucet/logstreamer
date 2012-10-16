@@ -13,17 +13,28 @@ define('DEBUG', 1);
 
 // @todo Config file ?
 $config = array (
-    'remoteUrl'        => 'http://127.0.0.1/test.php',  // target host
-    'maxMemory'        => '4M',                         // max buffer size for both input/output
-                                                        // Note that memory used can be twice this size
-                                                        // (for input and output) + internal php usage
-    'binary'           => true,                         // if plain log files on input, set to false.
-                                                        // If binary = false, lines will be sent fully
-    'compression'      => true,                         // will compress output with gzip
-    'compressionLevel' => 6,                            // GZIP Level. Impact on CPU
+    // target host
+    'remoteUrl'        => 'http://127.0.0.1/test.php',  
+    
+    // max buffer size for both input/output
+    // Note that memory used can be twice this size
+    // (for input and output) + internal php usage
+    'maxMemory'        => '4M',                         
+    
+    // if plain log files on input, set to false.
+    // If binary = false, lines will be sent fully
+    'binary'           => false,                        
+    
+    // will compress output with gzip    
+    'compression'      => true,    
+
+    // GZIP Level. Impact on CPU
+    'compressionLevel' => 6,
     'readSize'         => '16K',
     'writeSize'        => '128K',
-    'throttleTimeOnFail'   => 5                             // time to wait in seconds when remote server reports a failure with non-200 HTTP code
+    
+    // time to wait in seconds when remote server reports a failure with non-200 HTTP code
+    'throttleTimeOnFail'   => 5                              
 );
 
 if (!class_exists('logStreamerHttp')) require 'logstreamerhttp.class.php';
@@ -41,8 +52,8 @@ while (true) {
         $lastPrint = time();
         $infos = $logStreamer->getStats();
         printf(
-			"Read: %6.1f MB Write: %6.1f MB  Discarded: %6.1f MB  ".
-			"BufferSize: %5.0f + %4.0f KB  Memory: %4.1f MB (peak: %4.1f MB)\r", 
+            "Read: %6.1f MB Write: %6.1f MB  Discarded: %6.1f MB  ".
+            "BufferSize: %5.0f + %4.0f KB  Memory: %4.1f MB (peak: %4.1f MB)\r", 
             $infos['readBytes']/1024/1024, 
             $infos['writtenBytes']/1024/1024,
             $infos['dataDiscarded']/1024/1024,
@@ -55,8 +66,9 @@ while (true) {
     usleep(1000);
 }
 /*
- * logStreamer->flush() is synchronous and only exits when all bytes are written to the output stream.
- * It may be modified to asynchronous if we want to follow the flush progress, but that is unlikely.
+ * logStreamer->flush() is synchronous and only exits when all bytes are written 
+ * to the output stream. It may be modified to asynchronous if we want to follow
+ * the flush progress, but that is unlikely.
  */
 $logStreamer->flush();
 

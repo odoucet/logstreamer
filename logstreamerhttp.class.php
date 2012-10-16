@@ -86,7 +86,7 @@ class logStreamerHttp
         $this->_buffer = '';
         $this->_bufferLen = 0;
         $this->_stats = array (
-            'dataDiscarded' => 0, // bytes of data discarded due to memory limit
+            'dataDiscarded'      => 0, // bytes of data discarded due to memory limit
             'readErrors'         => 0, // errors reading data
             'writeErrors'        => 0, // errors when writing data to distant host
             'outputConnections'  => 0, // total connections to output
@@ -99,13 +99,20 @@ class logStreamerHttp
         $this->_config['maxMemory'] = self::humanToBytes($config['maxMemory']);
         $this->_config['readSize'] = self::humanToBytes($config['readSize']);
         $this->_config['writeSize'] = self::humanToBytes($config['writeSize']);
+        
+        // test compression
+        if (!function_exists('gzencode')) {
+            $this->_config['compression'] = false;
+        }
 
         // @todo handle HTTP authentication ?
         $remote = parse_url($config['remoteUrl']);
-        $protocol = (array_key_exists('scheme', $remote) && $remote['scheme'] === 'https') ? 'ssl' : 'tcp';
+        $protocol = (array_key_exists('scheme', $remote) && $remote['scheme'] === 'https') ? 
+            'ssl' : 'tcp';
         $this->_remoteHost = $remote['host'];
-        $this->_remoteUri = (array_key_exists('path', $remote)) ? $remote['path'] : '/';
+        $this->_remoteUri  = (array_key_exists('path', $remote)) ? $remote['path'] : '/';
         $this->_remoteUri .= (array_key_exists('query', $remote)) ? '?' . $remote['query'] : '';
+        
         if (array_key_exists('port', $remote)) {
             $port = (int) $remote['port'];
         } else {
@@ -126,7 +133,8 @@ class logStreamerHttp
 
         stream_set_blocking($this->_input, 0);
         if ($this->debug) echo "Logstreamer Ready. maxMemory: ".$this->_config['maxMemory'].
-            " readSize: ".$this->_config['readSize']." writeSize: ".$this->_config['writeSize']."\n";
+            " readSize: ".$this->_config['readSize']." writeSize: ".
+            $this->_config['writeSize']."\n";
     }
 
     /**
@@ -173,7 +181,8 @@ class logStreamerHttp
         $this->_bufferLen += $len;
         $this->_stats['readBytes'] += $len;
 
-        // Try to store data in a bucket after each read. May be optimized to not try after every single read call.
+        // Try to store data in a bucket after each read. May be optimized to not try
+        // after every single read call.
         $this->store();
 
         return $len;
@@ -181,14 +190,18 @@ class logStreamerHttp
 
     /**
      * Store content into HTTP POST requests in a bucket list
-     * @param bool force creating a bucket even if the buffer is smaller than the minimum bucket size.
+     * @param bool force creating a bucket even if the buffer is smaller \
+     *             than the minimum bucket size.
      * @return int number of buckets created
      */
     public function store($force = false)
     {
         $bucketCount = 0;
 
-        while (($force && $this->_bufferLen > 0) || $this->_bufferLen >= $this->_config['writeSize']) {
+        while (
+            ($force && $this->_bufferLen > 0) || 
+            $this->_bufferLen >= $this->_config['writeSize']
+        ) {
             if ($this->_config['binary'] === true) {
                 $size = $this->_bufferLen;
             } else {
@@ -204,7 +217,10 @@ class logStreamerHttp
             }
 
             if ($this->_config['compression'] === true) {
-                $bucket = gzencode(substr($this->_buffer, 0, $size), $this->_config['compressionLevel']);
+                $bucket = gzencode(
+                    substr($this->_buffer, 0, $size), 
+                    $this->_config['compressionLevel']
+                );
                 $bucketLen = strlen($bucket);
             } else {
                 $bucket = substr($this->_buffer, 0, $size);
@@ -218,7 +234,8 @@ class logStreamerHttp
                 'POST ' . $this->_remoteUri . ' HTTP/1.1' . "\r\n" .
                     'Host: ' . $this->_remoteHost . "\r\n" .
                     'User-Agent: logStreamerHttp ' . self::VERSION . "\r\n".
-                    // XXX: Why not use a standard MIME type for log files ? something more like text/* ?
+                    // XXX: Why not use a standard MIME type for log files ? 
+                    // something more like text/* ?
                     'Content-Type: text/x-log' . "\r\n";
 
             if ($this->_config['compression'] === true) {
@@ -238,7 +255,8 @@ class logStreamerHttp
             $bucketCount++;
         }
 
-        // New buckets have been stored, now check if we don't have too much. If so, drop the older ones.
+        // New buckets have been stored, now check if we don't have too much. 
+        // If so, drop the older ones.
         if ($bucketCount > 0) $this->checkBucketLimit();  
 
         return $bucketCount;
@@ -257,8 +275,9 @@ class logStreamerHttp
             $this->_writePos = 0;
             $this->_responseBuffer = null;
             $this->_bucketsLen -= strlen($this->_writeBuffer);
-            if ($this->debug) echo "Inserting bucket in the write buffer (".strlen($this->_writeBuffer).
-                " bytes), ".count($this->_buckets)." buckets remaining (".$this->_bucketsLen." bytes)\n";
+            if ($this->debug) echo "Inserting bucket in the write buffer (".
+                strlen($this->_writeBuffer)." bytes), ".count($this->_buckets).
+                " buckets remaining (".$this->_bucketsLen." bytes)\n";
         }
 
         if (is_resource($this->_stream) && feof($this->_stream)) {
@@ -270,11 +289,15 @@ class logStreamerHttp
         if (!is_resource($this->_stream)) {
 
             if (($this->_throttleTime + $this->_config['throttleTimeOnFail']) > time()) {
-                if ($this->debug) echo 'Connection throttled at ' . $this->_throttleTime . ', waiting until ' . ($this->_throttleTime + $this->_config['throttleTimeOnFail']) . "\n";
+                if ($this->debug) echo 'Connection throttled at '.$this->_throttleTime.
+                    ', waiting until '.
+                    ($this->_throttleTime + $this->_config['throttleTimeOnFail'])."\n";
+                    
                 return 0;
             }
 
-            // @see SSL over async sockets won't work because of bug #48182, see https://bugs.php.net/bug.php?id=48182
+            // @see SSL over async sockets won't work because of bug #48182, 
+            // @see https://bugs.php.net/bug.php?id=48182
 
             if ($this->debug) echo "\nConnection to $this->_remoteStream\n";
             $this->_stream = stream_socket_client(
@@ -295,7 +318,11 @@ class logStreamerHttp
         if ($this->_writePos < strlen($this->_writeBuffer) &&
             @stream_select($r = array(), $w = array($this->_stream), $e = array(), 0) > 0) {
 
-            $pos = fwrite($this->_stream, substr($this->_writeBuffer, $this->_writePos), $this->_config['writeSize']);
+            $pos = fwrite(
+                $this->_stream, 
+                substr($this->_writeBuffer, $this->_writePos), 
+                $this->_config['writeSize']
+            );
             if ($this->debug) echo "Wrote $pos bytes\n";
 
             if ($pos === 0) {
@@ -309,7 +336,8 @@ class logStreamerHttp
         }
 
         if ($this->_writePos === strlen($this->_writeBuffer)) {
-            if ($this->debug) echo "Write complete, now wait for server ACK before processing the next bucket...\n";
+            if ($this->debug) echo "Write complete, now wait for server ACK before ".
+                "processing the next bucket...\n";
 
             if (stream_select($r = array($this->_stream), $w = array(), $e = array(), 0) > 0) {
                 $this->_responseBuffer .= fread($this->_stream, 8192);
@@ -342,7 +370,11 @@ class logStreamerHttp
     public function flush()
     {
         $this->store(true);
-        while ($this->_bucketsLen > 0 || count($this->_buckets) > 0 || $this->_writeBuffer !== null) {
+        while (
+            $this->_bucketsLen > 0 || 
+            count($this->_buckets) > 0 || 
+            $this->_writeBuffer !== null
+        ) {
             $this->write();
             usleep(1000);
         }

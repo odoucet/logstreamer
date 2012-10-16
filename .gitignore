@@ -1,1 +1,5 @@
 /tests/*.xt
+/tests/resultfile.bin
+/tests/testfile.bin
+/tests/testfile.txt
+/tests/server.pid

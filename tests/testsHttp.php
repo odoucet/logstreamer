@@ -68,7 +68,7 @@ class logstreamerTest extends PHPUnit_Framework_TestCase
     
     protected function _init($src)
     {
-        require_once dirname(__FILE__).'/../logstreamer.class.php';
+        require_once dirname(__FILE__).'/../logstreamerhttp.class.php';
         self::$config['debugSrc'] = $src;
         $this->stream = new logStreamerHttp(self::$config);
     }
