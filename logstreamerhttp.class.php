@@ -234,6 +234,7 @@ class logStreamerHttp
                 'POST ' . $this->_remoteUri . ' HTTP/1.1' . "\r\n" .
                     'Host: ' . $this->_remoteHost . "\r\n" .
                     'User-Agent: logStreamerHttp ' . self::VERSION . "\r\n".
+                    'X-Checksum: md5,' . md5($bucket) . "\r\n".
                     // XXX: Why not use a standard MIME type for log files ? 
                     // something more like text/* ?
                     'Content-Type: text/x-log' . "\r\n";
@@ -300,7 +301,7 @@ class logStreamerHttp
             // @see https://bugs.php.net/bug.php?id=48182
 
             if ($this->debug) echo "\nConnection to $this->_remoteStream\n";
-            $this->_stream = stream_socket_client(
+            $this->_stream = @stream_socket_client(
                 $this->_remoteStream,
                 $errno = null,
                 $errstr = null,
