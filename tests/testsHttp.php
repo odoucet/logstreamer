@@ -19,7 +19,6 @@ class logstreamerTest extends PHPUnit_Framework_TestCase
             'binary' => false,
             'compression' => false,
             'compressionLevel' => 4,
-            'readSize' => '16K',
             'writeSize' => '32K',
             'maxRetryWithoutTransfer' => 10,
         );
@@ -351,7 +350,6 @@ class logstreamerTest extends PHPUnit_Framework_TestCase
                 array(
                     'remoteUrl' => 'http://127.0.0.1:27009/7pdcrcaoc.php', 
                     'compression' => true,
-                    'readSize' => 4096*1024,
                     'writeSize' => 4096*1024,
                     )
                     , 'testfile.txt', array(

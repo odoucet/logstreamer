@@ -32,7 +32,8 @@ $config = array (
 
     // GZIP Level. Impact on CPU
     'compressionLevel' => 6,
-    'readSize'         => '16K',
+    
+    // Buckets will be this size long (before compression)
     'writeSize'        => '128K',
     
     // time to wait in seconds when remote server reports a failure with non-200 HTTP code

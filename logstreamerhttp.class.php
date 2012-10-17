@@ -9,6 +9,12 @@
 class logStreamerHttp
 {
     const VERSION = '1.1 (2012-10-11)';
+    
+    /**
+     * please use the same value as in PHP source code /main/streams/php_streams_int.h:49
+     */
+    const CHUNK_SIZE = 8192;
+    
     protected $_input;
     protected $_stream;
     protected $_buffer;
@@ -97,7 +103,6 @@ class logStreamerHttp
         );
 
         $this->_config['maxMemory'] = self::humanToBytes($config['maxMemory']);
-        $this->_config['readSize'] = self::humanToBytes($config['readSize']);
         $this->_config['writeSize'] = self::humanToBytes($config['writeSize']);
         
         // test compression
@@ -133,8 +138,7 @@ class logStreamerHttp
 
         stream_set_blocking($this->_input, 0);
         if ($this->debug) echo "Logstreamer Ready. maxMemory: ".$this->_config['maxMemory'].
-            " readSize: ".$this->_config['readSize']." writeSize: ".
-            $this->_config['writeSize']."\n";
+            " writeSize: ".$this->_config['writeSize']."\n";
     }
 
     /**
@@ -169,7 +173,7 @@ class logStreamerHttp
             return false;
         }
 
-        if (($str = @fread($this->_input, $this->_config['readSize'])) === false) {
+        if (($str = @fread($this->_input, self::CHUNK_SIZE)) === false) {
             // WTF happened ?
             $this->_stats['readErrors']++;
             return false;
@@ -322,7 +326,7 @@ class logStreamerHttp
             $pos = fwrite(
                 $this->_stream, 
                 substr($this->_writeBuffer, $this->_writePos), 
-                $this->_config['writeSize']
+                self::CHUNK_SIZE
             );
             if ($this->debug) echo "Wrote $pos bytes\n";
 
