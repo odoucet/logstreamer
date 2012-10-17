@@ -43,6 +43,7 @@ TODO
 * Check config in __construct()
 * Throttle if server returned 5xx / 40x ...
 * handle redirects (code 3xx)
+* If PHP >= 5.4, add support for stream_set_chunk_size()
 
 
  
