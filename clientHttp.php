@@ -11,6 +11,8 @@
 
 define('DEBUG', 1);
 
+declare(ticks = 1);
+
 // @todo Config file ?
 $config = array (
     // target host
@@ -19,7 +21,7 @@ $config = array (
     // max buffer size for both input/output
     // Note that memory used can be twice this size
     // (for input and output) + internal php usage
-    'maxMemory'        => '4M',                         
+    'maxMemory'        => '32M',                         
     
     // if plain log files on input, set to false.
     // If binary = false, lines will be sent fully
@@ -41,6 +43,7 @@ $config = array (
 if (!class_exists('logStreamerHttp')) require 'logstreamerhttp.class.php';
 
 $logStreamer = new logStreamerHttp($config);
+pcntl_signal(SIGUSR1, array(&$logStreamer, 'printStatus'));
 
 $lastPrint = time();
 while (true) {
@@ -53,8 +56,9 @@ while (true) {
         $lastPrint = time();
         $infos = $logStreamer->getStats();
         printf(
-            "Read: %6.1f MB Write: %6.1f MB  Discarded: %6.1f MB  ".
-            "BufferSize: %5.0f + %4.0f KB  Memory: %4.1f MB (peak: %4.1f MB)\r", 
+            "Read: %6.1f MB  Write: %6.1f MB  Discarded: %6.1f MB  ".
+            "BufferSize: %5.0f + %4.0f KB (bucketsLen+writeBufferLen) ".
+            "Memory: %4.1f MB (peak: %4.1f MB)\r", 
             $infos['readBytes']/1024/1024, 
             $infos['writtenBytes']/1024/1024,
             $infos['dataDiscarded']/1024/1024,
@@ -66,6 +70,10 @@ while (true) {
     }
     usleep(1000);
 }
+
+//No more data on input. Grab infos and print them with trigger_error
+$logStreamer->printStatus();
+
 /*
  * logStreamer->flush() is synchronous and only exits when all bytes are written 
  * to the output stream. It may be modified to asynchronous if we want to follow
