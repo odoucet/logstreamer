@@ -442,4 +442,16 @@ class logStreamerHttp
 
         return (int) round($bytes, 0);
     }
+
+    public function printStatus()
+    {
+        trigger_error (
+            sprintf(
+                "Buckets still in memory: %d (%d bytes)",
+                count($this->_buckets),
+                $this->_bucketsLen
+            ), E_USER_NOTICE
+        );
+        return;
+    }
 }
