@@ -333,10 +333,13 @@ class logStreamerHttp
             $this->_responseBuffer = null;
         }
 
+        $r = $e = array();
+        $w = array($this->_stream);
+
 
 
         if ($this->_writePos < strlen($this->_writeBuffer) &&
-            @stream_select($r = array(), $w = array($this->_stream), $e = array(), 0) > 0) {
+            stream_select($r, $w, $e, 0) > 0) {
 
             $pos = fwrite(
                 $this->_stream, 
@@ -359,7 +362,10 @@ class logStreamerHttp
             if ($this->debug) echo "Write complete, now wait for server ACK before ".
                 "processing the next bucket...\n";
 
-            if (stream_select($r = array($this->_stream), $w = array(), $e = array(), 0) > 0) {
+            $r = array($this->_stream);
+            $w = $e = array();
+
+            if (stream_select($r, $w, $e, 0) > 0) {
                 $this->_responseBuffer .= fread($this->_stream, 8192);
             }
             if ($responsePos = strpos($this->_responseBuffer, "\r\n\r\n")) {
