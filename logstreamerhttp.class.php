@@ -219,15 +219,16 @@ class logStreamerHttp
                     $size++;
                 }
             }
-
+            
+            $bucket = substr($this->_buffer, 0, $size);
+            $signature = md5($bucket);
             if ($this->_config['compression'] === true) {
                 $bucket = gzencode(
-                    substr($this->_buffer, 0, $size), 
+                    $bucket, 
                     $this->_config['compressionLevel']
                 );
                 $bucketLen = strlen($bucket);
             } else {
-                $bucket = substr($this->_buffer, 0, $size);
                 $bucketLen = $size;
             }
 
@@ -238,7 +239,7 @@ class logStreamerHttp
                 'POST ' . $this->_remoteUri . ' HTTP/1.1' . "\r\n" .
                     'Host: ' . $this->_remoteHost . "\r\n" .
                     'User-Agent: logStreamerHttp ' . self::VERSION . "\r\n".
-                    'X-Checksum: md5,' . md5($bucket) . "\r\n".
+                    'X-Checksum: md5,' . $signature . "\r\n".
                     // XXX: Why not use a standard MIME type for log files ? 
                     // something more like text/* ?
                     'Content-Type: text/x-log' . "\r\n";
