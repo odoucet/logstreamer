@@ -21,6 +21,7 @@ class logstreamerTest extends PHPUnit_Framework_TestCase
             'compressionLevel' => 4,
             'writeSize' => '32K',
             'maxRetryWithoutTransfer' => 10,
+            'bufferLifetimeBeforeFlush' => 60,
         );
         
         if (file_exists('server.pid')) {
@@ -455,6 +456,15 @@ class logstreamerTest extends PHPUnit_Framework_TestCase
                     'execTime' => 6,
                 )
             ),
+            
+            // #11 plain data / no compression with bufferLifetimeBeforeFlush small
+            /**
+             * quite difficult to do : 
+             *  first, configure bufferLifetimeBeforeFlush small, with lots of data on input,
+             *  set writeSize very big,
+             *  do not close stdin (or flush() will be called)
+             *  and check if some data is written, even if flush() is not called.
+             */
             
             
         );   
