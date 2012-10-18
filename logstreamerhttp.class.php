@@ -97,6 +97,7 @@ class logStreamerHttp
         $this->_buckets = array();
         $this->_buffer = '';
         $this->_bufferLen = 0;
+        $this->_bufferTime = time();
         $this->_stats = array (
             'dataDiscarded'      => 0, // bytes of data discarded due to memory limit
             'readErrors'         => 0, // errors reading data
@@ -271,8 +272,8 @@ class logStreamerHttp
             $this->_buckets[] = $writeBuffer;
             $this->_bucketsLen += strlen($writeBuffer);
             $this->_stats['bucketsCreated']++;
-            $bucketCount++;
             $this->_bufferTime = time();
+            $bucketCount++;
         }
 
         // New buckets have been stored, now check if we don't have too much. 
