@@ -82,6 +82,12 @@ class logStreamerHttp
 
     protected $_throttleTime = 0;
 
+    /**
+     * @var int buffer mtime
+     */
+
+    protected $_bufferTime = 0;
+
     public function __construct($config)
     {
         $this->debug = false;
@@ -183,6 +189,7 @@ class logStreamerHttp
 
         $this->_buffer .= $str;
         $this->_bufferLen += $len;
+        $this->_bufferTime = time();
         $this->_stats['readBytes'] += $len;
 
         // Try to store data in a bucket after each read. May be optimized to not try
@@ -201,6 +208,13 @@ class logStreamerHttp
     public function store($force = false)
     {
         $bucketCount = 0;
+
+        if ($this->_bufferTime + $this->_config['bufferLifetimeBeforeFlush'] > time()) {
+            if ($this->debug) echo 'Buffer is more than ' .
+                $this->_config['bufferLifetimeBeforeFlush'] .
+                'seconds old, forcing bucket creation.' . "\n";
+            $force = true;
+        }
 
         while (
             ($force && $this->_bufferLen > 0) || 

@@ -39,7 +39,10 @@ $config = array (
     'writeSize'        => '128K',
     
     // time to wait in seconds when remote server reports a failure with non-200 HTTP code
-    'throttleTimeOnFail'   => 5                              
+    'throttleTimeOnFail'   => 5,
+
+    // Time in seconds before sending data even if the current bucket is not full
+    'bufferLifetimeBeforeFlush' => 60,
 );
 
 if (!class_exists('logStreamerHttp')) require 'logstreamerhttp.class.php';
