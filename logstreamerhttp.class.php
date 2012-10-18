@@ -189,7 +189,6 @@ class logStreamerHttp
 
         $this->_buffer .= $str;
         $this->_bufferLen += $len;
-        $this->_bufferTime = time();
         $this->_stats['readBytes'] += $len;
 
         // Try to store data in a bucket after each read. May be optimized to not try
@@ -209,7 +208,7 @@ class logStreamerHttp
     {
         $bucketCount = 0;
 
-        if ($this->_bufferTime + $this->_config['bufferLifetimeBeforeFlush'] > time()) {
+        if ($this->_bufferTime + $this->_config['bufferLifetimeBeforeFlush'] < time()) {
             if ($this->debug) echo 'Buffer is more than ' .
                 $this->_config['bufferLifetimeBeforeFlush'] .
                 'seconds old, forcing bucket creation.' . "\n";
@@ -273,6 +272,7 @@ class logStreamerHttp
             $this->_bucketsLen += strlen($writeBuffer);
             $this->_stats['bucketsCreated']++;
             $bucketCount++;
+            $this->_bufferTime = time();
         }
 
         // New buckets have been stored, now check if we don't have too much. 
