@@ -11,7 +11,9 @@
 
 define('DEBUG', 1);
 
-declare(ticks = 1);
+if (version_compare(PHP_VERSION, '5.3.0') < 0) {
+    declare(ticks = 1);
+}
 
 // @todo Config file ?
 $config = array (
@@ -48,10 +50,13 @@ pcntl_signal(SIGUSR1, array(&$logStreamer, 'printStatus'));
 $lastPrint = time();
 while (true) {
 
+    if (version_compare(PHP_VERSION, '5.3.0') >= 0) {
+        pcntl_signal_dispatch();
+    }
+
     if ($logStreamer->read() === false) break;
     $logStreamer->write();
 
-    // @todo intercept signals to write Statistics somewhere
     if (DEBUG && time() != $lastPrint) {
         $lastPrint = time();
         $infos = $logStreamer->getStats();
@@ -81,5 +86,8 @@ $logStreamer->printStatus();
  */
 $logStreamer->flush();
 
-echo "\n";
-if (DEBUG) var_dump($logStreamer->getStats());
+
+if (DEBUG) {
+    echo "\n";
+    var_dump($logStreamer->getStats());
+}
