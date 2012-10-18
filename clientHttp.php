@@ -1,4 +1,4 @@
-#/usr/bin/env php
+#!/usr/bin/env php
 <?php
 /* vim: set ts=8 sw=4 tw=0 syntax=on: */
 
