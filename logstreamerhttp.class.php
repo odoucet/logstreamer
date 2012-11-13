@@ -342,7 +342,7 @@ class logStreamerHttp
         if ($this->_writePos < strlen($this->_writeBuffer) &&
             stream_select($r, $w, $e, 0) > 0) {
 
-            $pos = fwrite(
+            $pos = @fwrite(
                 $this->_stream, 
                 substr($this->_writeBuffer, $this->_writePos), 
                 self::CHUNK_SIZE
