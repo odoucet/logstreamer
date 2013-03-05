@@ -48,6 +48,7 @@ $config = array (
 if (!class_exists('logStreamerHttp')) require 'logstreamerhttp.class.php';
 
 $logStreamer = new logStreamerHttp($config);
+$bytesRead   = 0;
 pcntl_signal(SIGUSR1, array(&$logStreamer, 'printStatus'));
 
 $lastPrint = time();
@@ -57,7 +58,7 @@ while (true) {
         pcntl_signal_dispatch();
     }
 
-    if ($logStreamer->read() === false) break;
+    if (($bytesRead = $logStreamer->read()) === false) break;
     $logStreamer->write();
 
     if (DEBUG && time() != $lastPrint) {
@@ -76,7 +77,10 @@ while (true) {
             memory_get_peak_usage(true)/1024/1024
         );
     }
-    usleep(1000);
+    if ($bytesRead === 0)
+        usleep(10000); // wait a little more if no data read
+    else
+        usleep(1000);
 }
 
 //No more data on input. Grab infos and print them with trigger_error
