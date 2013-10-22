@@ -79,14 +79,18 @@ class logStreamerHttp
     /**
      * @var int Time when throttling started
      */
-
     protected $_throttleTime = 0;
 
     /**
      * @var int buffer mtime
      */
-
     protected $_bufferTime = 0;
+    
+    /**
+     * @var int last time we successfully wrote something to server.
+     *          (used to reconnect if timeout too long)
+     */
+    protected $_lastWriteTime = 0;
 
     public function __construct($config)
     {
@@ -98,6 +102,7 @@ class logStreamerHttp
         $this->_buffer = '';
         $this->_bufferLen = 0;
         $this->_bufferTime = time();
+        $this->_lastWriteTime = time(); // give us some time
         $this->_stats = array (
             'dataDiscarded'      => 0, // bytes of data discarded due to memory limit
             'readErrors'         => 0, // errors reading data
@@ -301,7 +306,9 @@ class logStreamerHttp
                 " buckets remaining (".$this->_bucketsLen." bytes)\n";
         }
 
-        if (is_resource($this->_stream) && feof($this->_stream)) {
+        if (is_resource($this->_stream) && 
+             (feof($this->_stream) || 
+              ($this->_lastWriteTime < time()-$this->_config['maxWriteTimeout']))) {
             $this->_stats['writeErrors']++;
             fclose($this->_stream);
             $this->_stream = null;
@@ -376,6 +383,7 @@ class logStreamerHttp
                     // We got our server positive ACK, moving on to the next bucket
                     if ($this->debug) echo "Got server ACK, processing next bucket...\n";
                     $this->_writeBuffer = null;
+                    $this->_lastWriteTime = time();
                 } else {
                     // Server responded with an error, trying again the same bucket
                     $this->_stats['serverAnsweredNo200']++;
@@ -476,7 +484,10 @@ class logStreamerHttp
                 "Buckets still in memory: %d (%d bytes)",
                 count($this->_buckets),
                 $this->_bucketsLen
-            ), E_USER_NOTICE
+            )
+            . 'Stats: ' .
+            print_r($this->_stats, 1)
+            , E_USER_NOTICE
         );
         return;
     }

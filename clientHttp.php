@@ -4,7 +4,7 @@
 
 /**********************
  * Log Streamer PHP
- * @version 0.0.1
+ * @version 0.0.2
  * @author Olivier Doucet <odoucet@php.net>
  * @author Gabriel Barazer <gabriel@oxeva.fr>
  */
@@ -43,6 +43,10 @@ $config = array (
 
     // Time in seconds before sending data even if the current bucket is not full
     'bufferLifetimeBeforeFlush' => 60,
+    
+    // Maximum time in seconds to wait before making a reconnection 
+    // (if server is really too slow)
+    'maxWriteTimeout' => 120,
 );
 
 if (!class_exists('logStreamerHttp')) require 'logstreamerhttp.class.php';
