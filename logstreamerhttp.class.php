@@ -312,6 +312,7 @@ class logStreamerHttp
             $this->_stats['writeErrors']++;
             fclose($this->_stream);
             $this->_stream = null;
+            $this->_lastWriteTime = time(); // give us some time
         }
 
         if (!is_resource($this->_stream)) {
