@@ -148,7 +148,12 @@ class logStreamerHttp
             $this->_input = fopen($config['debugSrc'], 'rb');
         }
 
-        stream_set_blocking($this->_input, 0);
+        if (is_resource($this->_input)) {
+            stream_set_blocking($this->_input, 0);
+        } else {
+            echo "Cannot open input stream, exiting";
+            die(1);
+        }
         if ($this->debug) echo "Logstreamer Ready. maxMemory: ".$this->_config['maxMemory'].
             " writeSize: ".$this->_config['writeSize']."\n";
     }
@@ -328,7 +333,6 @@ class logStreamerHttp
             // @see SSL over async sockets won't work because of bug #48182, 
             // @see https://bugs.php.net/bug.php?id=48182
 
-            if ($this->debug) echo "\nConnection to $this->_remoteStream\n";
             $this->_stream = @stream_socket_client(
                 $this->_remoteStream,
                 $errno = null,
@@ -336,7 +340,15 @@ class logStreamerHttp
                 0,
                 STREAM_CLIENT_CONNECT | STREAM_CLIENT_ASYNC_CONNECT
             );
-            stream_set_blocking($this->_stream, 0);
+
+            if (is_resource($this->_stream)) {
+                if ($this->debug) echo "\nConnection to ".$this->_remoteStream." succeed\n";
+                stream_set_blocking($this->_stream, 0);
+            } else {
+                if ($this->debug) echo "\nConnection to ".$this->_remoteStream." FAILED\n";
+                return false;
+            }
+            
             $this->_stats['outputConnections']++;
             $this->_writePos = 0;
             $this->_responseBuffer = null;

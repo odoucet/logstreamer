@@ -34,7 +34,7 @@ cat /dev/urandom |php clientHttp.php
 
 Ready for production ?
 ----------------------
-Give us a few weeks ;)
+Handle terabytes of data each day with no trouble since 2013 :)
 
 TODO
 ----
@@ -44,6 +44,3 @@ TODO
 * Throttle if server returned 5xx / 40x ...
 * handle redirects (code 3xx)
 * If PHP >= 5.4, add support for stream_set_chunk_size()
-
-
- 
